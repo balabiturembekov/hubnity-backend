@@ -121,7 +121,7 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Недостаточно прав доступа' })
   @ApiResponse({ status: 404, description: 'Пользователь не найден' })
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @GetUser() user: any) {
-    return this.usersService.update(id, updateUserDto, user.companyId, user.role);
+    return this.usersService.update(id, updateUserDto, user.companyId, user.role, user.id);
   }
 
   @Delete(':id')
@@ -137,9 +137,6 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Недостаточно прав доступа или попытка удалить свой аккаунт' })
   @ApiResponse({ status: 404, description: 'Пользователь не найден' })
   remove(@Param('id') id: string, @GetUser() user: any) {
-    if (id === user.id) {
-      throw new ForbiddenException('You cannot delete your own account');
-    }
-    return this.usersService.remove(id, user.companyId, user.role);
+    return this.usersService.remove(id, user.companyId, user.role, user.id);
   }
 }

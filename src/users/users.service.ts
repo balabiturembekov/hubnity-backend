@@ -26,22 +26,33 @@ export class UsersService {
       throw new BadRequestException('Email is required');
     }
 
+    // Additional email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      throw new BadRequestException('Invalid email format');
+    }
+
     // Validate and sanitize name
     const sanitizedName = dto.name.trim();
     if (!sanitizedName || sanitizedName.length < 1) {
       throw new BadRequestException('Name cannot be empty');
     }
-
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        email: normalizedEmail,
-        companyId,
-      },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('User with this email already exists in your company');
+    if (sanitizedName.length < 2) {
+      throw new BadRequestException('Name must be at least 2 characters long');
     }
+
+    // Use transaction to prevent race conditions
+    const user = await this.prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findFirst({
+        where: {
+          email: normalizedEmail,
+          companyId,
+        },
+      });
+
+      if (existingUser) {
+        throw new ConflictException('User with this email already exists in your company');
+      }
 
     if (dto.role) {
       if (dto.role === UserRole.OWNER && creatorRole !== UserRole.SUPER_ADMIN) {
@@ -81,13 +92,40 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(sanitizedPassword, 12); // Increased salt rounds from 10 to 12 for better security
 
-    const user = await this.prisma.user.create({
+    // Validate avatar URL if provided
+    if (dto.avatar) {
+      const avatarUrl = dto.avatar.trim();
+      if (avatarUrl.length > 0) {
+        try {
+          const url = new URL(avatarUrl);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            throw new BadRequestException('Avatar URL must use HTTP or HTTPS protocol');
+          }
+          if (avatarUrl.length > 2048) {
+            throw new BadRequestException('Avatar URL must not exceed 2048 characters');
+          }
+        } catch (error) {
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+          throw new BadRequestException('Invalid avatar URL format');
+        }
+      }
+    }
+
+    // Validate name max length
+    if (sanitizedName.length > 255) {
+      throw new BadRequestException('Name must not exceed 255 characters');
+    }
+
+    const user = await tx.user.create({
       data: {
         ...dto,
         name: sanitizedName,
         email: normalizedEmail,
         password: hashedPassword,
         companyId,
+        passwordChangedAt: new Date(),
       },
       select: {
         id: true,
@@ -101,6 +139,9 @@ export class UsersService {
         createdAt: true,
         updatedAt: true,
       },
+    });
+
+    return user;
     });
 
     await this.cache.invalidateUsers(companyId);
@@ -161,7 +202,7 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto, companyId: string, updaterRole: UserRole) {
+  async update(id: string, dto: UpdateUserDto, companyId: string, updaterRole: UserRole, updaterId?: string) {
     // Initial check for existence and companyId
     const existingUser = await this.findOne(id, companyId);
 
@@ -185,6 +226,12 @@ export class UsersService {
         normalizedEmail = dto.email.toLowerCase().trim();
         if (!normalizedEmail || normalizedEmail.length === 0) {
           throw new BadRequestException('Email cannot be empty');
+        }
+
+        // Additional email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(normalizedEmail)) {
+          throw new BadRequestException('Invalid email format');
         }
 
         const existingUserWithEmail = await tx.user.findFirst({
@@ -223,9 +270,42 @@ export class UsersService {
         if (!sanitizedName || sanitizedName.length < 1) {
           throw new BadRequestException('Name cannot be empty');
         }
+        if (sanitizedName.length < 2) {
+          throw new BadRequestException('Name must be at least 2 characters long');
+        }
+        if (sanitizedName.length > 255) {
+          throw new BadRequestException('Name must not exceed 255 characters');
+        }
       }
 
+      // Initialize updateData
       const updateData: any = { ...dto };
+
+      // Validate avatar URL if provided
+      if (dto.avatar !== undefined) {
+        if (dto.avatar === null || dto.avatar === '') {
+          updateData.avatar = null;
+        } else {
+          const avatarUrl = dto.avatar.trim();
+          if (avatarUrl.length > 0) {
+            try {
+              const url = new URL(avatarUrl);
+              if (!['http:', 'https:'].includes(url.protocol)) {
+                throw new BadRequestException('Avatar URL must use HTTP or HTTPS protocol');
+              }
+              if (avatarUrl.length > 2048) {
+                throw new BadRequestException('Avatar URL must not exceed 2048 characters');
+              }
+              updateData.avatar = avatarUrl;
+            } catch (error) {
+              if (error instanceof BadRequestException) {
+                throw error;
+              }
+              throw new BadRequestException('Invalid avatar URL format');
+            }
+          }
+        }
+      }
       if ('companyId' in updateData) {
         delete updateData.companyId;
       }
@@ -234,6 +314,11 @@ export class UsersService {
       }
       if (sanitizedName) {
         updateData.name = sanitizedName;
+      }
+
+      // Prevent self-deactivation
+      if (dto.status === 'INACTIVE' && updaterId && id === updaterId) {
+        throw new BadRequestException('You cannot deactivate your own account');
       }
 
       // Check for active time entries before deactivating user
@@ -286,7 +371,14 @@ export class UsersService {
           throw new BadRequestException('Password must contain at least one letter and one number');
         }
 
+        // Check if new password is different from current password
+        const isSamePassword = await bcrypt.compare(sanitizedPassword, currentUser.password);
+        if (isSamePassword) {
+          throw new BadRequestException('New password must be different from current password');
+        }
+
         updateData.password = await bcrypt.hash(sanitizedPassword, 12); // Increased salt rounds from 10 to 12 for better security
+        updateData.passwordChangedAt = new Date();
       }
 
       return tx.user.update({
@@ -311,7 +403,12 @@ export class UsersService {
     return updated;
   }
 
-  async remove(id: string, companyId: string, deleterRole: UserRole) {
+  async remove(id: string, companyId: string, deleterRole: UserRole, deleterId?: string) {
+    // Prevent self-deletion
+    if (deleterId && id === deleterId) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+
     // Initial check for existence and companyId
     const user = await this.findOne(id, companyId);
 
@@ -327,6 +424,11 @@ export class UsersService {
 
       if (!currentUser) {
         throw new NotFoundException(`User with ID ${id} not found in your company`);
+      }
+
+      // Double-check self-deletion prevention (in case deleterId was not provided)
+      if (deleterId && id === deleterId) {
+        throw new BadRequestException('You cannot delete your own account');
       }
 
       // Check permissions
