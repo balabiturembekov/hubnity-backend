@@ -83,6 +83,12 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException('Email is required');
     }
 
+    // Additional email format validation (DTO already has @IsEmail, but double-check for security)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      throw new BadRequestException('Invalid email format');
+    }
+
     // Validate and sanitize name
     const sanitizedName = dto.name.trim();
     if (!sanitizedName || sanitizedName.length < 2) {
@@ -331,77 +337,97 @@ export class AuthService implements OnModuleInit {
    * Generates access and refresh tokens
    */
   private async generateTokens(userId: string, email: string, companyId: string) {
-    const payload = {
-      sub: userId,
-      email,
-      companyId,
-    };
+    try {
+      const payload = {
+        sub: userId,
+        email,
+        companyId,
+      };
 
-    const accessToken = this.jwtService.sign(payload);
+      const accessToken = this.jwtService.sign(payload);
 
-    // Generate refresh token
-    const refreshToken = this.generateSecureToken();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_IN_DAYS);
+      // Generate refresh token
+      const refreshToken = this.generateSecureToken();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + this.REFRESH_TOKEN_EXPIRES_IN_DAYS);
 
-    // Store refresh token in database
-    await this.prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId,
-        expiresAt,
-      },
-    });
+      // Store refresh token in database
+      await this.prisma.refreshToken.create({
+        data: {
+          token: refreshToken,
+          userId,
+          expiresAt,
+        },
+      });
 
-    return {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    };
+      return {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      };
+    } catch (error) {
+      this.logger.error(
+        {
+          error,
+          userId,
+          email,
+          companyId,
+        },
+        'Failed to generate tokens',
+      );
+      throw new BadRequestException('Failed to generate authentication tokens');
+    }
   }
 
   /**
    * Refresh access token using refresh token
    */
   async refreshToken(dto: RefreshTokenDto) {
-    const refreshToken = await this.prisma.refreshToken.findUnique({
-      where: { token: dto.refreshToken },
-      include: { user: { include: { company: true } } },
-    });
-
-    if (!refreshToken) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-
-    if (refreshToken.revokedAt) {
-      throw new UnauthorizedException('Refresh token has been revoked');
-    }
-
-    if (refreshToken.expiresAt < new Date()) {
-      // Clean up expired token
-      await this.prisma.refreshToken.delete({
-        where: { id: refreshToken.id },
+    // Use transaction to prevent race conditions
+    const result = await this.prisma.$transaction(async (tx) => {
+      const refreshToken = await tx.refreshToken.findUnique({
+        where: { token: dto.refreshToken },
+        include: { user: { include: { company: true } } },
       });
-      throw new UnauthorizedException('Refresh token has expired');
-    }
 
-    const user = refreshToken.user;
+      if (!refreshToken) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
-    if (user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('User account is inactive');
-    }
+      if (refreshToken.revokedAt) {
+        throw new UnauthorizedException('Refresh token has been revoked');
+      }
 
-    if (!user.company) {
-      throw new UnauthorizedException('User company not found');
-    }
+      if (refreshToken.expiresAt < new Date()) {
+        // Clean up expired token
+        await tx.refreshToken.delete({
+          where: { id: refreshToken.id },
+        });
+        throw new UnauthorizedException('Refresh token has expired');
+      }
 
-    // Generate new tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.companyId);
+      const user = refreshToken.user;
 
-    // Revoke old refresh token
-    await this.prisma.refreshToken.update({
-      where: { id: refreshToken.id },
-      data: { revokedAt: new Date() },
+      if (user.status !== 'ACTIVE') {
+        throw new UnauthorizedException('User account is inactive');
+      }
+
+      if (!user.company) {
+        throw new UnauthorizedException('User company not found');
+      }
+
+      // Revoke old refresh token first (before generating new ones)
+      await tx.refreshToken.update({
+        where: { id: refreshToken.id },
+        data: { revokedAt: new Date() },
+      });
+
+      return { user };
     });
+
+    const { user } = result;
+
+    // Generate new tokens after old token is revoked
+    const tokens = await this.generateTokens(user.id, user.email, user.companyId);
 
     this.logger.info(
       {
@@ -496,15 +522,30 @@ export class AuthService implements OnModuleInit {
   async forgotPassword(dto: ForgotPasswordDto) {
     const normalizedEmail = dto.email.toLowerCase().trim();
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      // Still return success to prevent email enumeration
+      return {
+        message: 'If an account with that email exists, a password reset link has been sent',
+      };
+    }
+
     // Find user by email (search across all companies)
-    const user = await this.prisma.user.findFirst({
+    // Note: Email is unique per company, so we might find multiple users
+    // We'll send reset token to the first active user found
+    const users = await this.prisma.user.findMany({
       where: { email: normalizedEmail },
       include: { company: true },
+      orderBy: { createdAt: 'desc' }, // Get most recent user first
     });
+
+    // Find first active user
+    const user = users.find((u) => u.status === 'ACTIVE');
 
     // Always return success to prevent email enumeration
     // But only create token if user exists
-    if (user && user.status === 'ACTIVE') {
+    if (user) {
       // Generate reset token
       const resetToken = this.generateSecureToken();
       const expiresAt = new Date();
@@ -581,34 +622,46 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException('New password and confirm password do not match');
     }
 
-    // Find reset token
-    const resetToken = await this.prisma.passwordResetToken.findUnique({
-      where: { token: dto.token },
-      include: { user: true },
+    // Find reset token and validate in transaction to prevent race conditions
+    const result = await this.prisma.$transaction(async (tx) => {
+      const resetToken = await tx.passwordResetToken.findUnique({
+        where: { token: dto.token },
+        include: { user: true },
+      });
+
+      if (!resetToken) {
+        throw new UnauthorizedException('Invalid or expired reset token');
+      }
+
+      if (resetToken.usedAt) {
+        throw new BadRequestException('Reset token has already been used');
+      }
+
+      if (resetToken.expiresAt < new Date()) {
+        throw new UnauthorizedException('Reset token has expired');
+      }
+
+      const user = resetToken.user;
+
+      if (user.status !== 'ACTIVE') {
+        throw new UnauthorizedException('User account is inactive');
+      }
+
+      return { resetToken, user };
     });
 
-    if (!resetToken) {
-      throw new UnauthorizedException('Invalid or expired reset token');
-    }
+    const { resetToken, user } = result;
 
-    if (resetToken.usedAt) {
-      throw new BadRequestException('Reset token has already been used');
-    }
-
-    if (resetToken.expiresAt < new Date()) {
-      throw new UnauthorizedException('Reset token has expired');
-    }
-
-    const user = resetToken.user;
-
-    if (user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('User account is inactive');
+    // Check if new password is the same as current password
+    const isSamePassword = await bcrypt.compare(sanitizedNewPassword, user.password);
+    if (isSamePassword) {
+      throw new BadRequestException('New password must be different from current password');
     }
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(sanitizedNewPassword, 12);
 
-    // Update password and mark token as used
+    // Update password and mark token as used in transaction
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
@@ -651,17 +704,29 @@ export class AuthService implements OnModuleInit {
    */
   async logout(userId: string, refreshToken?: string) {
     if (refreshToken) {
-      // Revoke specific refresh token
-      await this.prisma.refreshToken.updateMany({
+      // Revoke specific refresh token (verify it belongs to the user)
+      const updated = await this.prisma.refreshToken.updateMany({
         where: {
           token: refreshToken,
-          userId,
+          userId, // This ensures the token belongs to the user
           revokedAt: null,
         },
         data: {
           revokedAt: new Date(),
         },
       });
+
+      if (updated.count === 0) {
+        // Token doesn't exist or already revoked or doesn't belong to user
+        this.logger.warn(
+          {
+            userId,
+            tokenProvided: !!refreshToken,
+          },
+          'Attempted to logout with invalid or already revoked token',
+        );
+        // Still return success to prevent token enumeration
+      }
     } else {
       // Revoke all refresh tokens for this user
       await this.prisma.refreshToken.updateMany({
@@ -691,9 +756,12 @@ export class AuthService implements OnModuleInit {
    */
   async cleanupExpiredTokens() {
     const now = new Date();
+    const OLD_REVOKED_TOKENS_DAYS = 7; // Delete revoked tokens older than 7 days
+    const oldRevokedDate = new Date();
+    oldRevokedDate.setDate(oldRevokedDate.getDate() - OLD_REVOKED_TOKENS_DAYS);
 
     // Delete expired refresh tokens
-    const deletedRefreshTokens = await this.prisma.refreshToken.deleteMany({
+    const deletedExpiredRefreshTokens = await this.prisma.refreshToken.deleteMany({
       where: {
         expiresAt: {
           lt: now,
@@ -701,26 +769,50 @@ export class AuthService implements OnModuleInit {
       },
     });
 
+    // Delete old revoked refresh tokens (older than 7 days)
+    const deletedOldRevokedRefreshTokens = await this.prisma.refreshToken.deleteMany({
+      where: {
+        revokedAt: {
+          not: null,
+          lt: oldRevokedDate,
+        },
+      },
+    });
+
     // Delete expired password reset tokens
-    const deletedResetTokens = await this.prisma.passwordResetToken.deleteMany({
+    const deletedExpiredResetTokens = await this.prisma.passwordResetToken.deleteMany({
       where: {
         expiresAt: {
           lt: now,
+        },
+      },
+    });
+
+    // Delete old used password reset tokens (older than 7 days)
+    const deletedOldUsedResetTokens = await this.prisma.passwordResetToken.deleteMany({
+      where: {
+        usedAt: {
+          not: null,
+          lt: oldRevokedDate,
         },
       },
     });
 
     this.logger.info(
       {
-        deletedRefreshTokens: deletedRefreshTokens.count,
-        deletedResetTokens: deletedResetTokens.count,
+        deletedExpiredRefreshTokens: deletedExpiredRefreshTokens.count,
+        deletedOldRevokedRefreshTokens: deletedOldRevokedRefreshTokens.count,
+        deletedExpiredResetTokens: deletedExpiredResetTokens.count,
+        deletedOldUsedResetTokens: deletedOldUsedResetTokens.count,
       },
-      'Cleaned up expired tokens',
+      'Cleaned up expired and old tokens',
     );
 
     return {
-      deletedRefreshTokens: deletedRefreshTokens.count,
-      deletedResetTokens: deletedResetTokens.count,
+      deletedExpiredRefreshTokens: deletedExpiredRefreshTokens.count,
+      deletedOldRevokedRefreshTokens: deletedOldRevokedRefreshTokens.count,
+      deletedExpiredResetTokens: deletedExpiredResetTokens.count,
+      deletedOldUsedResetTokens: deletedOldUsedResetTokens.count,
     };
   }
 
