@@ -130,6 +130,7 @@ export class ScreenshotsController {
       },
     },
   })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
   async findByTimeEntry(

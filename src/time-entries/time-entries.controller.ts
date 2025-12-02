@@ -92,6 +92,7 @@ export class TimeEntriesController {
     type: String,
   })
   @ApiResponse({ status: 200, description: "Список записей времени" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   findAll(
     @GetUser() user: any,
     @Query("userId") userId?: string,
@@ -124,6 +125,7 @@ export class TimeEntriesController {
     type: String,
   })
   @ApiResponse({ status: 200, description: "Список активных записей времени" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   findActive(@GetUser() user: any, @Query("userId") userId?: string) {
     if (
       user.role !== UserRole.OWNER &&
@@ -144,6 +146,7 @@ export class TimeEntriesController {
     status: 200,
     description: "Список записей времени пользователя",
   })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   findMyEntries(@GetUser() user: any) {
     return this.timeEntriesService.findAll(user.companyId, user.id);
   }
@@ -167,6 +170,7 @@ export class TimeEntriesController {
     example: 100,
   })
   @ApiResponse({ status: 200, description: "История активности" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   findActivities(
     @GetUser() user: any,
     @Query("userId") userId?: string,

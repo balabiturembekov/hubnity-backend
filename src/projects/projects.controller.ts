@@ -55,6 +55,7 @@ export class ProjectsController {
     description: "Возвращает список всех проектов компании",
   })
   @ApiResponse({ status: 200, description: "Список проектов" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   findAll(@GetUser() user: any) {
     return this.projectsService.findAll(user.companyId);
   }
@@ -65,6 +66,7 @@ export class ProjectsController {
     description: "Возвращает список только активных проектов компании",
   })
   @ApiResponse({ status: 200, description: "Список активных проектов" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   findActive(@GetUser() user: any) {
     return this.projectsService.findActive(user.companyId);
   }
@@ -76,6 +78,7 @@ export class ProjectsController {
   })
   @ApiParam({ name: "id", description: "ID проекта", type: String })
   @ApiResponse({ status: 200, description: "Информация о проекте" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 404, description: "Проект не найден" })
   findOne(@Param("id") id: string, @GetUser() user: any) {
     return this.projectsService.findOne(id, user.companyId);

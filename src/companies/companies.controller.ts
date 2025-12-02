@@ -96,6 +96,7 @@ export class CompaniesController {
       },
     },
   })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   async getScreenshotSettings(@GetUser() user: any) {
     return this.companiesService.getScreenshotSettings(user.companyId);
   }
@@ -152,6 +153,7 @@ export class CompaniesController {
       },
     },
   })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   async getIdleDetectionSettings(@GetUser() user: any) {
     return this.companiesService.getIdleDetectionSettings(user.companyId);
   }

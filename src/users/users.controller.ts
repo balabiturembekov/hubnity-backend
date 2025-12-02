@@ -17,7 +17,6 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
-  ApiQuery,
 } from "@nestjs/swagger";
 import { UsersService } from "./users.service";
 import { CreateUserDto } from "./dto/create-user.dto";
@@ -71,6 +70,7 @@ export class UsersController {
     description: "Возвращает информацию о текущем пользователе",
   })
   @ApiResponse({ status: 200, description: "Информация о пользователе" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   getMyProfile(@GetUser() user: any) {
     return this.usersService.findOne(user.id, user.companyId);
   }
