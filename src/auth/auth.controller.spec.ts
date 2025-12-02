@@ -1,16 +1,16 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { ConfigService } from '@nestjs/config';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { User } from '@prisma/client';
+import { Test, TestingModule } from "@nestjs/testing";
+import { AuthController } from "./auth.controller";
+import { AuthService } from "./auth.service";
+import { ConfigService } from "@nestjs/config";
+import { RegisterDto } from "./dto/register.dto";
+import { LoginDto } from "./dto/login.dto";
+import { ChangePasswordDto } from "./dto/change-password.dto";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { User } from "@prisma/client";
 
-describe('AuthController', () => {
+describe("AuthController", () => {
   let controller: AuthController;
   let authService: AuthService;
 
@@ -29,15 +29,15 @@ describe('AuthController', () => {
   };
 
   const mockUser: User = {
-    id: 'user-id',
-    name: 'John Doe',
-    email: 'john@example.com',
-    password: 'hashed-password',
-    role: 'OWNER',
-    status: 'ACTIVE',
+    id: "user-id",
+    name: "John Doe",
+    email: "john@example.com",
+    password: "hashed-password",
+    role: "OWNER",
+    status: "ACTIVE",
     avatar: null,
     hourlyRate: null,
-    companyId: 'company-id',
+    companyId: "company-id",
     passwordChangedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -64,34 +64,34 @@ describe('AuthController', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(controller).toBeDefined();
   });
 
-  describe('register', () => {
+  describe("register", () => {
     const registerDto: RegisterDto = {
-      name: 'John Doe',
-      email: 'john@example.com',
-      companyName: 'Test Company',
-      password: 'password123',
-      confirmPassword: 'password123',
+      name: "John Doe",
+      email: "john@example.com",
+      companyName: "Test Company",
+      password: "password123",
+      confirmPassword: "password123",
     };
 
     const expectedResponse = {
       user: {
-        id: 'user-id',
-        name: 'John Doe',
-        email: 'john@example.com',
-        role: 'OWNER',
-        status: 'ACTIVE',
-        companyId: 'company-id',
+        id: "user-id",
+        name: "John Doe",
+        email: "john@example.com",
+        role: "OWNER",
+        status: "ACTIVE",
+        companyId: "company-id",
         createdAt: new Date(),
       },
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
+      access_token: "access-token",
+      refresh_token: "refresh-token",
     };
 
-    it('should register a new user', async () => {
+    it("should register a new user", async () => {
       mockAuthService.register.mockResolvedValue(expectedResponse);
 
       const result = await controller.register(registerDto);
@@ -101,30 +101,30 @@ describe('AuthController', () => {
     });
   });
 
-  describe('login', () => {
+  describe("login", () => {
     const loginDto: LoginDto = {
-      email: 'john@example.com',
-      password: 'password123',
+      email: "john@example.com",
+      password: "password123",
     };
 
     const expectedResponse = {
       user: {
-        id: 'user-id',
-        name: 'John Doe',
-        email: 'john@example.com',
-        role: 'OWNER',
-        status: 'ACTIVE',
-        companyId: 'company-id',
+        id: "user-id",
+        name: "John Doe",
+        email: "john@example.com",
+        role: "OWNER",
+        status: "ACTIVE",
+        companyId: "company-id",
         company: {
-          id: 'company-id',
-          name: 'Test Company',
+          id: "company-id",
+          name: "Test Company",
         },
       },
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
+      access_token: "access-token",
+      refresh_token: "refresh-token",
     };
 
-    it('should login user', async () => {
+    it("should login user", async () => {
       mockAuthService.login.mockResolvedValue(expectedResponse);
 
       const result = await controller.login(loginDto);
@@ -134,25 +134,25 @@ describe('AuthController', () => {
     });
   });
 
-  describe('getProfile', () => {
-    it('should return current user profile', async () => {
+  describe("getProfile", () => {
+    it("should return current user profile", async () => {
       const result = await controller.getProfile(mockUser);
 
       expect(result).toEqual(mockUser);
     });
   });
 
-  describe('refreshToken', () => {
+  describe("refreshToken", () => {
     const refreshTokenDto: RefreshTokenDto = {
-      refreshToken: 'valid-refresh-token',
+      refreshToken: "valid-refresh-token",
     };
 
     const expectedResponse = {
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
+      access_token: "new-access-token",
+      refresh_token: "new-refresh-token",
     };
 
-    it('should refresh access token', async () => {
+    it("should refresh access token", async () => {
       mockAuthService.refreshToken.mockResolvedValue(expectedResponse);
 
       const result = await controller.refreshToken(refreshTokenDto);
@@ -162,58 +162,67 @@ describe('AuthController', () => {
     });
   });
 
-  describe('changePassword', () => {
+  describe("changePassword", () => {
     const changePasswordDto: ChangePasswordDto = {
-      currentPassword: 'old-password',
-      newPassword: 'newpassword123',
-      confirmPassword: 'newpassword123',
+      currentPassword: "old-password",
+      newPassword: "newpassword123",
+      confirmPassword: "newpassword123",
     };
 
     const expectedResponse = {
-      message: 'Password changed successfully',
+      message: "Password changed successfully",
     };
 
-    it('should change user password', async () => {
+    it("should change user password", async () => {
       mockAuthService.changePassword.mockResolvedValue(expectedResponse);
 
-      const result = await controller.changePassword(mockUser, changePasswordDto);
+      const result = await controller.changePassword(
+        mockUser,
+        changePasswordDto,
+      );
 
       expect(result).toEqual(expectedResponse);
-      expect(authService.changePassword).toHaveBeenCalledWith(mockUser.id, changePasswordDto);
+      expect(authService.changePassword).toHaveBeenCalledWith(
+        mockUser.id,
+        changePasswordDto,
+      );
     });
   });
 
-  describe('forgotPassword', () => {
+  describe("forgotPassword", () => {
     const forgotPasswordDto: ForgotPasswordDto = {
-      email: 'john@example.com',
+      email: "john@example.com",
     };
 
     const expectedResponse = {
-      message: 'If an account with that email exists, a password reset link has been sent',
+      message:
+        "If an account with that email exists, a password reset link has been sent",
     };
 
-    it('should request password reset', async () => {
+    it("should request password reset", async () => {
       mockAuthService.forgotPassword.mockResolvedValue(expectedResponse);
 
       const result = await controller.forgotPassword(forgotPasswordDto);
 
       expect(result).toEqual(expectedResponse);
-      expect(authService.forgotPassword).toHaveBeenCalledWith(forgotPasswordDto);
+      expect(authService.forgotPassword).toHaveBeenCalledWith(
+        forgotPasswordDto,
+      );
     });
   });
 
-  describe('resetPassword', () => {
+  describe("resetPassword", () => {
     const resetPasswordDto: ResetPasswordDto = {
-      token: 'reset-token',
-      newPassword: 'newpassword123',
-      confirmPassword: 'newpassword123',
+      token: "reset-token",
+      newPassword: "newpassword123",
+      confirmPassword: "newpassword123",
     };
 
     const expectedResponse = {
-      message: 'Password has been reset successfully',
+      message: "Password has been reset successfully",
     };
 
-    it('should reset password', async () => {
+    it("should reset password", async () => {
       mockAuthService.resetPassword.mockResolvedValue(expectedResponse);
 
       const result = await controller.resetPassword(resetPasswordDto);
@@ -223,12 +232,12 @@ describe('AuthController', () => {
     });
   });
 
-  describe('logout', () => {
+  describe("logout", () => {
     const expectedResponse = {
-      message: 'Logged out successfully',
+      message: "Logged out successfully",
     };
 
-    it('should logout user without refresh token', async () => {
+    it("should logout user without refresh token", async () => {
       mockAuthService.logout.mockResolvedValue(expectedResponse);
 
       const result = await controller.logout(mockUser);
@@ -237,15 +246,17 @@ describe('AuthController', () => {
       expect(authService.logout).toHaveBeenCalledWith(mockUser.id, undefined);
     });
 
-    it('should logout user with specific refresh token', async () => {
-      const body = { refreshToken: 'specific-refresh-token' };
+    it("should logout user with specific refresh token", async () => {
+      const body = { refreshToken: "specific-refresh-token" };
       mockAuthService.logout.mockResolvedValue(expectedResponse);
 
       const result = await controller.logout(mockUser, body);
 
       expect(result).toEqual(expectedResponse);
-      expect(authService.logout).toHaveBeenCalledWith(mockUser.id, body.refreshToken);
+      expect(authService.logout).toHaveBeenCalledWith(
+        mockUser.id,
+        body.refreshToken,
+      );
     });
   });
 });
-

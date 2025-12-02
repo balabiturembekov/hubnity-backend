@@ -2,17 +2,17 @@ name: Pull Request Checks
 
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hubnity_test?schema=public
 
 jobs:
   pr-checks:
     name: PR Checks
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -38,7 +38,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -84,13 +84,13 @@ jobs:
             const coverage = fs.existsSync('coverage/coverage-summary.json') 
               ? JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'))
               : null;
-            
+
             const coveragePercent = coverage 
               ? Math.round(coverage.total.lines.pct)
               : 'N/A';
-            
+
             const body = `## ✅ PR Checks Completed
-            
+
             - ✅ Linting passed
             - ✅ Formatting check passed
             - ✅ TypeScript type check passed
@@ -98,13 +98,12 @@ jobs:
             - ✅ Tests passed
             - ✅ Build successful
             - 📊 Code coverage: ${coveragePercent}%
-            
+
             Ready for review! 🚀`;
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: body
             });
-

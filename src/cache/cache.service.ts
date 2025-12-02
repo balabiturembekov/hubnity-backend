@@ -1,6 +1,11 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import Redis from "ioredis";
 
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
@@ -12,9 +17,13 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit() {
     try {
-      const redisHost = this.configService.get('REDIS_HOST') || 'localhost';
-      const redisPort = parseInt(this.configService.get('REDIS_PORT') || '6379', 10);
-      const redisPassword = this.configService.get('REDIS_PASSWORD') || undefined;
+      const redisHost = this.configService.get("REDIS_HOST") || "localhost";
+      const redisPort = parseInt(
+        this.configService.get("REDIS_PORT") || "6379",
+        10,
+      );
+      const redisPassword =
+        this.configService.get("REDIS_PASSWORD") || undefined;
 
       this.client = new Redis({
         host: redisHost,
@@ -27,17 +36,20 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
         maxRetriesPerRequest: 3,
       });
 
-      this.client.on('error', (err) => {
-        this.logger.error('Redis Client Error:', err);
+      this.client.on("error", (err) => {
+        this.logger.error("Redis Client Error:", err);
       });
 
-      this.client.on('connect', () => {
-        this.logger.log('Redis Client Connected');
+      this.client.on("connect", () => {
+        this.logger.log("Redis Client Connected");
       });
 
       await this.client.ping();
     } catch (error) {
-      this.logger.warn('Failed to connect to Redis, caching will be disabled:', error);
+      this.logger.warn(
+        "Failed to connect to Redis, caching will be disabled:",
+        error,
+      );
       this.client = null;
     }
   }
@@ -49,7 +61,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   isAvailable(): boolean {
-    return this.client !== null && this.client.status === 'ready';
+    return this.client !== null && this.client.status === "ready";
   }
 
   async get<T>(key: string): Promise<T | null> {
@@ -68,7 +80,11 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async set(key: string, value: any, ttl: number = this.defaultTTL): Promise<void> {
+  async set(
+    key: string,
+    value: any,
+    ttl: number = this.defaultTTL,
+  ): Promise<void> {
     if (!this.isAvailable()) {
       return;
     }
@@ -101,13 +117,13 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       });
 
       const keys: string[] = [];
-      stream.on('data', (resultKeys: string[]) => {
+      stream.on("data", (resultKeys: string[]) => {
         keys.push(...resultKeys);
       });
 
       await new Promise<void>((resolve, reject) => {
-        stream.on('end', resolve);
-        stream.on('error', reject);
+        stream.on("end", resolve);
+        stream.on("error", reject);
       });
 
       if (keys.length > 0) {
@@ -134,4 +150,3 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     await this.del(`stats:${companyId}`);
   }
 }
-

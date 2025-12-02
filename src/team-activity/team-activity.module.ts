@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
-import { TeamActivityController } from './team-activity.controller';
-import { TeamActivityService } from './team-activity.service';
-import { PrismaModule } from '../prisma/prisma.module';
+import { Module } from "@nestjs/common";
+import { TeamActivityController } from "./team-activity.controller";
+import { TeamActivityService } from "./team-activity.service";
+import { PrismaModule } from "../prisma/prisma.module";
 
 @Module({
   imports: [PrismaModule],
@@ -10,4 +10,3 @@ import { PrismaModule } from '../prisma/prisma.module';
   exports: [TeamActivityService],
 })
 export class TeamActivityModule {}
-

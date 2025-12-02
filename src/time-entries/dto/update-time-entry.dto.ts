@@ -1,11 +1,20 @@
-import { IsOptional, IsString, IsDateString, IsInt, Min, Max, IsEnum, MaxLength } from 'class-validator';
-import { EntryStatus } from '@prisma/client';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsInt,
+  Min,
+  Max,
+  IsEnum,
+  MaxLength,
+} from "class-validator";
+import { EntryStatus } from "@prisma/client";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class UpdateTimeEntryDto {
   @ApiPropertyOptional({
-    description: 'ID проекта',
-    example: 'uuid',
+    description: "ID проекта",
+    example: "uuid",
     type: String,
     nullable: true,
   })
@@ -14,25 +23,25 @@ export class UpdateTimeEntryDto {
   projectId?: string | null;
 
   @ApiPropertyOptional({
-    description: 'Время начала работы (ISO 8601)',
-    example: '2025-11-30T10:00:00Z',
-    format: 'date-time',
+    description: "Время начала работы (ISO 8601)",
+    example: "2025-11-30T10:00:00Z",
+    format: "date-time",
   })
   @IsOptional()
   @IsDateString()
   startTime?: string;
 
   @ApiPropertyOptional({
-    description: 'Время окончания работы (ISO 8601)',
-    example: '2025-11-30T18:00:00Z',
-    format: 'date-time',
+    description: "Время окончания работы (ISO 8601)",
+    example: "2025-11-30T18:00:00Z",
+    format: "date-time",
   })
   @IsOptional()
   @IsDateString()
   endTime?: string;
 
   @ApiPropertyOptional({
-    description: 'Длительность в секундах',
+    description: "Длительность в секундах",
     example: 28800,
     minimum: 0,
     maximum: 2147483647,
@@ -45,8 +54,8 @@ export class UpdateTimeEntryDto {
   duration?: number;
 
   @ApiPropertyOptional({
-    description: 'Описание выполненной работы',
-    example: 'Разработка функционала авторизации',
+    description: "Описание выполненной работы",
+    example: "Разработка функционала авторизации",
     maxLength: 5000,
   })
   @IsOptional()
@@ -55,7 +64,7 @@ export class UpdateTimeEntryDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Статус записи времени',
+    description: "Статус записи времени",
     enum: EntryStatus,
     example: EntryStatus.RUNNING,
   })
@@ -63,4 +72,3 @@ export class UpdateTimeEntryDto {
   @IsEnum(EntryStatus)
   status?: EntryStatus;
 }
-

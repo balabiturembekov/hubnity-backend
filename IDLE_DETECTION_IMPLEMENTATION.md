@@ -3,6 +3,7 @@
 ## ✅ Что реализовано
 
 ### 1. **База данных (Prisma Schema)**
+
 - ✅ Добавлено поле `idleThreshold` в модель `Company` (по умолчанию 300 секунд = 5 минут)
 - ✅ Добавлено поле `idleDetectionEnabled` в модель `Company` (по умолчанию `true`)
 - ✅ Создана модель `UserActivity` для хранения последнего heartbeat пользователя
@@ -10,11 +11,13 @@
 ### 2. **API Эндпоинты**
 
 #### `POST /api/idle/heartbeat`
+
 - Отправка heartbeat (сигнала активности) от клиента
 - Обновляет время последней активности пользователя
 - Клиент должен отправлять этот запрос периодически (рекомендуется каждые 30-60 секунд)
 
 **Пример запроса:**
+
 ```json
 {
   "isActive": true
@@ -22,10 +25,12 @@
 ```
 
 #### `GET /api/idle/status`
+
 - Получить статус активности пользователя
 - Возвращает информацию о последнем heartbeat и статусе простоя
 
 **Пример ответа:**
+
 ```json
 {
   "isIdle": false,
@@ -38,12 +43,15 @@
 ### 3. **Настройки компании**
 
 #### `GET /api/companies/idle-detection-settings`
+
 - Получить настройки детекции простоя компании
 
 #### `PATCH /api/companies/idle-detection-settings`
+
 - Обновить настройки детекции простоя (только для OWNER и ADMIN)
 
 **Пример запроса:**
+
 ```json
 {
   "idleDetectionEnabled": true,
@@ -52,19 +60,23 @@
 ```
 
 **Валидация:**
+
 - `idleThreshold`: минимум 60 секунд, максимум 3600 секунд (1 час)
 
 ### 4. **Автоматическая пауза**
+
 - ✅ Cron job запускается каждую минуту (`@Cron(CronExpression.EVERY_MINUTE)`)
 - ✅ Проверяет всех пользователей с активными time entries
 - ✅ Автоматически ставит на паузу time entry, если пользователь в простое
 - ✅ Отправляет WebSocket событие `idle:detected` пользователю и компании
 
 ### 5. **WebSocket события**
+
 - ✅ Событие `idle:detected` отправляется при автоматической паузе
 - ✅ Содержит информацию о пользователе, time entry и причине паузы
 
 **Пример события:**
+
 ```json
 {
   "userId": "user-id",
@@ -80,14 +92,15 @@
 ### На стороне клиента (Frontend)
 
 1. **Отправка heartbeat:**
+
    ```javascript
    // Отправлять каждые 30-60 секунд
    setInterval(async () => {
-     await fetch('/api/idle/heartbeat', {
-       method: 'POST',
+     await fetch("/api/idle/heartbeat", {
+       method: "POST",
        headers: {
-         'Authorization': `Bearer ${token}`,
-         'Content-Type': 'application/json',
+         Authorization: `Bearer ${token}`,
+         "Content-Type": "application/json",
        },
        body: JSON.stringify({ isActive: true }),
      });
@@ -95,17 +108,18 @@
    ```
 
 2. **Проверка статуса:**
+
    ```javascript
-   const response = await fetch('/api/idle/status', {
-     headers: { 'Authorization': `Bearer ${token}` },
+   const response = await fetch("/api/idle/status", {
+     headers: { Authorization: `Bearer ${token}` },
    });
    const status = await response.json();
    ```
 
 3. **Подписка на WebSocket события:**
    ```javascript
-   socket.on('idle:detected', (data) => {
-     console.log('Time entry paused due to idle:', data);
+   socket.on("idle:detected", (data) => {
+     console.log("Time entry paused due to idle:", data);
      // Обновить UI, показать уведомление
    });
    ```
@@ -115,6 +129,7 @@
 ### Для администратора компании:
 
 1. Получить текущие настройки:
+
    ```bash
    GET /api/companies/idle-detection-settings
    ```
@@ -163,4 +178,3 @@ npx prisma db push
 ```bash
 npx prisma migrate dev --name add_idle_detection
 ```
-

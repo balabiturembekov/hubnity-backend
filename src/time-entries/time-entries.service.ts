@@ -4,13 +4,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CacheService } from '../cache/cache.service';
-import { EventsGateway } from '../events/events.gateway';
-import { CreateTimeEntryDto } from './dto/create-time-entry.dto';
-import { UpdateTimeEntryDto } from './dto/update-time-entry.dto';
-import { UserRole } from '@prisma/client';
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { CacheService } from "../cache/cache.service";
+import { EventsGateway } from "../events/events.gateway";
+import { CreateTimeEntryDto } from "./dto/create-time-entry.dto";
+import { UpdateTimeEntryDto } from "./dto/update-time-entry.dto";
+import { UserRole } from "@prisma/client";
 
 @Injectable()
 export class TimeEntriesService {
@@ -22,7 +22,12 @@ export class TimeEntriesService {
     private cache: CacheService,
   ) {}
 
-  async create(dto: CreateTimeEntryDto, companyId: string, creatorId: string, creatorRole: UserRole) {
+  async create(
+    dto: CreateTimeEntryDto,
+    companyId: string,
+    creatorId: string,
+    creatorRole: UserRole,
+  ) {
     const user = await this.prisma.user.findFirst({
       where: {
         id: dto.userId,
@@ -31,16 +36,22 @@ export class TimeEntriesService {
     });
 
     if (!user) {
-      throw new NotFoundException(`User with ID ${dto.userId} not found in your company`);
+      throw new NotFoundException(
+        `User with ID ${dto.userId} not found in your company`,
+      );
     }
 
-    if (user.status !== 'ACTIVE') {
-      throw new BadRequestException('Cannot create time entry for inactive user');
+    if (user.status !== "ACTIVE") {
+      throw new BadRequestException(
+        "Cannot create time entry for inactive user",
+      );
     }
 
     // CRITICAL: For employees, project is required
     if (user.role === UserRole.EMPLOYEE && !dto.projectId) {
-      throw new BadRequestException('Project is required for employees. Please select a project before starting the timer.');
+      throw new BadRequestException(
+        "Project is required for employees. Please select a project before starting the timer.",
+      );
     }
 
     // Проверка проекта будет выполнена в транзакции для предотвращения race condition
@@ -49,7 +60,9 @@ export class TimeEntriesService {
     const maxFutureTime = new Date();
     maxFutureTime.setHours(maxFutureTime.getHours() + 1);
     if (startTime > maxFutureTime) {
-      throw new BadRequestException('Start time cannot be more than 1 hour in the future');
+      throw new BadRequestException(
+        "Start time cannot be more than 1 hour in the future",
+      );
     }
 
     const transactionResult = await this.prisma.$transaction(async (tx) => {
@@ -63,11 +76,15 @@ export class TimeEntriesService {
         });
 
         if (!project) {
-          throw new NotFoundException(`Project with ID ${dto.projectId} not found in your company`);
+          throw new NotFoundException(
+            `Project with ID ${dto.projectId} not found in your company`,
+          );
         }
 
-        if (project.status === 'ARCHIVED') {
-          throw new BadRequestException('Cannot create time entry for archived project');
+        if (project.status === "ARCHIVED") {
+          throw new BadRequestException(
+            "Cannot create time entry for archived project",
+          );
         }
       }
 
@@ -75,7 +92,7 @@ export class TimeEntriesService {
         where: {
           userId: dto.userId,
           status: {
-            in: ['RUNNING', 'PAUSED'],
+            in: ["RUNNING", "PAUSED"],
           },
           user: {
             companyId,
@@ -84,7 +101,9 @@ export class TimeEntriesService {
       });
 
       if (activeEntryCheck) {
-        throw new BadRequestException('User already has an active time entry. Please stop or pause the existing entry first.');
+        throw new BadRequestException(
+          "User already has an active time entry. Please stop or pause the existing entry first.",
+        );
       }
 
       const newEntry = await tx.timeEntry.create({
@@ -93,7 +112,7 @@ export class TimeEntriesService {
           projectId: dto.projectId,
           startTime,
           description: dto.description,
-          status: dto.status || 'RUNNING',
+          status: dto.status || "RUNNING",
           duration: 0,
         },
         include: {
@@ -119,11 +138,15 @@ export class TimeEntriesService {
         data: {
           userId: dto.userId,
           projectId: dto.projectId,
-          type: 'START',
+          type: "START",
         },
       });
 
-      return { entry: newEntry, activityId: activity.id, activityTimestamp: activity.timestamp };
+      return {
+        entry: newEntry,
+        activityId: activity.id,
+        activityTimestamp: activity.timestamp,
+      };
     });
 
     const entry = transactionResult.entry;
@@ -141,22 +164,25 @@ export class TimeEntriesService {
             userId: entry.userId,
             userName: entry.user.name,
             userAvatar: entry.user.avatar ?? undefined,
-            type: 'START',
+            type: "START",
             projectId: entry.projectId ?? undefined,
             timestamp: activityTimestamp.toISOString(),
           },
           companyId,
         );
       } else {
-        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-          entryId: entry.id,
-          userId: entry.userId,
-        });
+        this.logger.error(
+          `Failed to broadcast activity ${activityId}: user data missing`,
+          {
+            entryId: entry.id,
+            userId: entry.userId,
+          },
+        );
       }
     } catch (error: any) {
       this.logger.warn(
         { activityId, entryId: entry.id, error: error.message },
-        'Failed to broadcast activity',
+        "Failed to broadcast activity",
       );
     }
 
@@ -165,7 +191,7 @@ export class TimeEntriesService {
     } catch (error: any) {
       this.logger.warn(
         { entryId: entry.id, error: error.message },
-        'Failed to broadcast time entry update',
+        "Failed to broadcast time entry update",
       );
     }
 
@@ -179,12 +205,15 @@ export class TimeEntriesService {
       // Если не удалось обновить isIdle, логируем, но не критично
       this.logger.warn(
         { userId: entry.userId, error: error.message },
-        'Failed to reset isIdle when creating time entry',
+        "Failed to reset isIdle when creating time entry",
       );
     }
 
     setTimeout(() => {
-      this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-created' }, companyId);
+      this.eventsGateway.broadcastStatsUpdate(
+        { trigger: "time-entry-created" },
+        companyId,
+      );
     }, 1000);
 
     return entry;
@@ -208,7 +237,9 @@ export class TimeEntriesService {
       });
 
       if (!user) {
-        throw new NotFoundException(`User with ID ${userId} not found in your company`);
+        throw new NotFoundException(
+          `User with ID ${userId} not found in your company`,
+        );
       }
 
       where.userId = userId;
@@ -223,7 +254,9 @@ export class TimeEntriesService {
       });
 
       if (!project) {
-        throw new NotFoundException(`Project with ID ${projectId} not found in your company`);
+        throw new NotFoundException(
+          `Project with ID ${projectId} not found in your company`,
+        );
       }
 
       where.projectId = projectId;
@@ -247,14 +280,14 @@ export class TimeEntriesService {
           },
         },
       },
-      orderBy: { startTime: 'desc' },
+      orderBy: { startTime: "desc" },
     });
   }
 
   async findActive(companyId: string, userId?: string) {
     const where: any = {
       status: {
-        in: ['RUNNING', 'PAUSED'],
+        in: ["RUNNING", "PAUSED"],
       },
       user: {
         companyId,
@@ -272,7 +305,9 @@ export class TimeEntriesService {
       });
 
       if (!user) {
-        throw new NotFoundException(`User with ID ${userId} not found in your company`);
+        throw new NotFoundException(
+          `User with ID ${userId} not found in your company`,
+        );
       }
 
       where.userId = userId;
@@ -356,44 +391,57 @@ export class TimeEntriesService {
       const maxFutureTime = new Date();
       maxFutureTime.setHours(maxFutureTime.getHours() + 1);
       if (newStartTime > maxFutureTime) {
-        throw new BadRequestException('Start time cannot be more than 1 hour in the future');
+        throw new BadRequestException(
+          "Start time cannot be more than 1 hour in the future",
+        );
       }
       updateData.startTime = newStartTime;
     }
 
-    const finalStartTime = updateData.startTime ? new Date(updateData.startTime) : new Date(entry.startTime);
-    const finalEndTime = updateData.endTime ? new Date(updateData.endTime) : null;
+    const finalStartTime = updateData.startTime
+      ? new Date(updateData.startTime)
+      : new Date(entry.startTime);
+    const finalEndTime = updateData.endTime
+      ? new Date(updateData.endTime)
+      : null;
 
     if (finalEndTime && finalEndTime <= finalStartTime) {
-      throw new BadRequestException('End time must be after start time');
+      throw new BadRequestException("End time must be after start time");
     }
 
-    if (dto.endTime && entry.status === 'RUNNING') {
+    if (dto.endTime && entry.status === "RUNNING") {
       const start = finalStartTime.getTime();
       const end = finalEndTime!.getTime();
-      const calculatedDuration = Math.floor((end - start) / 1000) + entry.duration;
+      const calculatedDuration =
+        Math.floor((end - start) / 1000) + entry.duration;
 
       if (calculatedDuration < 0) {
-        throw new BadRequestException('Calculated duration cannot be negative. Please check startTime and endTime values.');
+        throw new BadRequestException(
+          "Calculated duration cannot be negative. Please check startTime and endTime values.",
+        );
       }
 
       updateData.duration = calculatedDuration;
-      updateData.status = 'STOPPED';
+      updateData.status = "STOPPED";
     }
 
-    if (dto.status === 'STOPPED' && entry.status !== 'STOPPED') {
+    if (dto.status === "STOPPED" && entry.status !== "STOPPED") {
       if (!dto.endTime) {
         updateData.endTime = new Date();
       }
 
       if (!dto.duration) {
-        const end = updateData.endTime ? new Date(updateData.endTime).getTime() : new Date().getTime();
+        const end = updateData.endTime
+          ? new Date(updateData.endTime).getTime()
+          : new Date().getTime();
 
-        if (entry.status === 'RUNNING') {
+        if (entry.status === "RUNNING") {
           const currentSessionStart = new Date(entry.startTime).getTime();
-          const currentSessionSeconds = Math.floor((end - currentSessionStart) / 1000);
+          const currentSessionSeconds = Math.floor(
+            (end - currentSessionStart) / 1000,
+          );
           updateData.duration = (entry.duration || 0) + currentSessionSeconds;
-        } else if (entry.status === 'PAUSED') {
+        } else if (entry.status === "PAUSED") {
           updateData.duration = entry.duration || 0;
         } else {
           const start = finalStartTime.getTime();
@@ -401,23 +449,31 @@ export class TimeEntriesService {
         }
 
         if (updateData.duration < 0) {
-          throw new BadRequestException('Duration cannot be negative. Please check startTime and endTime values.');
+          throw new BadRequestException(
+            "Duration cannot be negative. Please check startTime and endTime values.",
+          );
         }
         if (updateData.duration > 2147483647) {
-          throw new BadRequestException('Duration exceeds maximum allowed value (68+ years). Please check startTime and endTime values.');
+          throw new BadRequestException(
+            "Duration exceeds maximum allowed value (68+ years). Please check startTime and endTime values.",
+          );
         }
       } else {
         if (dto.duration < 0) {
-          throw new BadRequestException('Duration cannot be negative');
+          throw new BadRequestException("Duration cannot be negative");
         }
         if (dto.duration > 2147483647) {
-          throw new BadRequestException('Duration exceeds maximum allowed value (68+ years)');
+          throw new BadRequestException(
+            "Duration exceeds maximum allowed value (68+ years)",
+          );
         }
       }
 
-      const finalEndTimeCheck = updateData.endTime ? new Date(updateData.endTime) : new Date();
+      const finalEndTimeCheck = updateData.endTime
+        ? new Date(updateData.endTime)
+        : new Date();
       if (finalEndTimeCheck <= finalStartTime) {
-        throw new BadRequestException('End time must be after start time');
+        throw new BadRequestException("End time must be after start time");
       }
     }
 
@@ -437,15 +493,21 @@ export class TimeEntriesService {
       }
 
       // Check permissions within transaction to prevent race conditions
-      if (updaterRole !== UserRole.OWNER && updaterRole !== UserRole.ADMIN && updaterRole !== UserRole.SUPER_ADMIN) {
+      if (
+        updaterRole !== UserRole.OWNER &&
+        updaterRole !== UserRole.ADMIN &&
+        updaterRole !== UserRole.SUPER_ADMIN
+      ) {
         if (currentEntry.userId !== updaterId) {
-          throw new ForbiddenException('You can only update your own time entries');
+          throw new ForbiddenException(
+            "You can only update your own time entries",
+          );
         }
       }
 
       // Проверяем проект в транзакции для предотвращения race condition
       if (dto.projectId !== undefined) {
-        if (dto.projectId === null || dto.projectId === '') {
+        if (dto.projectId === null || dto.projectId === "") {
           // CRITICAL: For employees, project cannot be removed
           const entryUser = await tx.user.findFirst({
             where: {
@@ -458,7 +520,9 @@ export class TimeEntriesService {
           });
 
           if (entryUser?.role === UserRole.EMPLOYEE) {
-            throw new BadRequestException('Project is required for employees. Cannot remove project from time entry.');
+            throw new BadRequestException(
+              "Project is required for employees. Cannot remove project from time entry.",
+            );
           }
 
           updateData.projectId = null;
@@ -471,23 +535,27 @@ export class TimeEntriesService {
           });
 
           if (!project) {
-            throw new NotFoundException(`Project with ID ${dto.projectId} not found in your company`);
+            throw new NotFoundException(
+              `Project with ID ${dto.projectId} not found in your company`,
+            );
           }
 
-          if (project.status === 'ARCHIVED') {
-            throw new BadRequestException('Cannot assign time entry to archived project');
+          if (project.status === "ARCHIVED") {
+            throw new BadRequestException(
+              "Cannot assign time entry to archived project",
+            );
           }
         }
       }
 
       // Check for active entries if trying to set status to RUNNING
       // This check happens within the transaction AFTER reading current entry to prevent race conditions
-      if (dto.status === 'RUNNING' && currentEntry.status !== 'RUNNING') {
+      if (dto.status === "RUNNING" && currentEntry.status !== "RUNNING") {
         const activeEntryCheck = await tx.timeEntry.findFirst({
           where: {
             userId: currentEntry.userId,
             status: {
-              in: ['RUNNING', 'PAUSED'],
+              in: ["RUNNING", "PAUSED"],
             },
             id: {
               not: id,
@@ -499,7 +567,9 @@ export class TimeEntriesService {
         });
 
         if (activeEntryCheck) {
-          throw new BadRequestException('User already has an active time entry. Please stop or pause the existing entry first.');
+          throw new BadRequestException(
+            "User already has an active time entry. Please stop or pause the existing entry first.",
+          );
         }
       }
 
@@ -529,7 +599,7 @@ export class TimeEntriesService {
     await this.cache.invalidateStats(companyId);
 
     // Сбрасываем isIdle в false только если статус действительно RUNNING
-    if (updated.status === 'RUNNING') {
+    if (updated.status === "RUNNING") {
       try {
         await this.prisma.userActivity.updateMany({
           where: { userId: updated.userId },
@@ -539,7 +609,7 @@ export class TimeEntriesService {
         // Если не удалось обновить isIdle, логируем, но не критично
         this.logger.warn(
           { userId: updated.userId, error: error.message },
-          'Failed to reset isIdle when resuming time entry',
+          "Failed to reset isIdle when resuming time entry",
         );
       }
     }
@@ -550,28 +620,40 @@ export class TimeEntriesService {
     } catch (error: any) {
       this.logger.warn(
         { entryId: updated.id, error: error.message },
-        'Failed to broadcast time entry update',
+        "Failed to broadcast time entry update",
       );
     }
 
     setTimeout(() => {
-      this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
+      this.eventsGateway.broadcastStatsUpdate(
+        { trigger: "time-entry-updated" },
+        companyId,
+      );
     }, 1000);
 
     return updated;
   }
 
-  async stop(id: string, companyId: string, stopperId: string, stopperRole: UserRole) {
+  async stop(
+    id: string,
+    companyId: string,
+    stopperId: string,
+    stopperRole: UserRole,
+  ) {
     const entry = await this.findOne(id, companyId);
 
-    if (stopperRole !== UserRole.OWNER && stopperRole !== UserRole.ADMIN && stopperRole !== UserRole.SUPER_ADMIN) {
+    if (
+      stopperRole !== UserRole.OWNER &&
+      stopperRole !== UserRole.ADMIN &&
+      stopperRole !== UserRole.SUPER_ADMIN
+    ) {
       if (entry.userId !== stopperId) {
-        throw new ForbiddenException('You can only stop your own time entries');
+        throw new ForbiddenException("You can only stop your own time entries");
       }
     }
 
-    if (entry.status === 'STOPPED') {
-      throw new BadRequestException('Time entry is already stopped');
+    if (entry.status === "STOPPED") {
+      throw new BadRequestException("Time entry is already stopped");
     }
 
     const transactionResult = await this.prisma.$transaction(async (tx) => {
@@ -590,20 +672,20 @@ export class TimeEntriesService {
       }
 
       // Check status again within transaction
-      if (currentEntry.status === 'STOPPED') {
-        throw new BadRequestException('Time entry is already stopped');
+      if (currentEntry.status === "STOPPED") {
+        throw new BadRequestException("Time entry is already stopped");
       }
 
       // Calculate endTime and duration within transaction using current entry data
       const endTime = new Date();
-      
+
       // Пересчитываем duration на основе актуального статуса из транзакции
       let finalDuration = currentEntry.duration;
-      if (currentEntry.status === 'RUNNING') {
+      if (currentEntry.status === "RUNNING") {
         const start = new Date(currentEntry.startTime).getTime();
         const end = endTime.getTime();
         const elapsed = Math.floor((end - start) / 1000);
-        
+
         // Log warning if elapsed time is negative (possible clock sync issue)
         if (elapsed < 0) {
           this.logger.warn(
@@ -614,18 +696,20 @@ export class TimeEntriesService {
               endTime: endTime.toISOString(),
               elapsed,
             },
-            'Negative elapsed time detected in stop() - possible clock synchronization issue',
+            "Negative elapsed time detected in stop() - possible clock synchronization issue",
           );
         }
-        
+
         const safeElapsed = Math.max(0, elapsed);
         finalDuration = currentEntry.duration + safeElapsed;
-      } else if (currentEntry.status === 'PAUSED') {
+      } else if (currentEntry.status === "PAUSED") {
         finalDuration = currentEntry.duration;
       }
 
       if (finalDuration < 0) {
-        throw new BadRequestException('Duration cannot be negative. Please check time entry data.');
+        throw new BadRequestException(
+          "Duration cannot be negative. Please check time entry data.",
+        );
       }
 
       const updatedEntry = await tx.timeEntry.update({
@@ -633,7 +717,7 @@ export class TimeEntriesService {
         data: {
           endTime,
           duration: finalDuration,
-          status: 'STOPPED',
+          status: "STOPPED",
         },
         include: {
           user: {
@@ -658,11 +742,15 @@ export class TimeEntriesService {
         data: {
           userId: currentEntry.userId,
           projectId: currentEntry.projectId,
-          type: 'STOP',
+          type: "STOP",
         },
       });
 
-      return { entry: updatedEntry, activityId: activity.id, activityTimestamp: activity.timestamp };
+      return {
+        entry: updatedEntry,
+        activityId: activity.id,
+        activityTimestamp: activity.timestamp,
+      };
     });
 
     const updated = transactionResult.entry;
@@ -680,22 +768,25 @@ export class TimeEntriesService {
             userId: updated.userId,
             userName: updated.user.name,
             userAvatar: updated.user.avatar ?? undefined,
-            type: 'STOP',
+            type: "STOP",
             projectId: updated.projectId ?? undefined,
             timestamp: activityTimestamp.toISOString(),
           },
           companyId,
         );
       } else {
-        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-          entryId: updated.id,
-          userId: updated.userId,
-        });
+        this.logger.error(
+          `Failed to broadcast activity ${activityId}: user data missing`,
+          {
+            entryId: updated.id,
+            userId: updated.userId,
+          },
+        );
       }
     } catch (error: any) {
       this.logger.warn(
         { activityId, entryId: updated.id, error: error.message },
-        'Failed to broadcast activity',
+        "Failed to broadcast activity",
       );
     }
 
@@ -704,28 +795,42 @@ export class TimeEntriesService {
     } catch (error: any) {
       this.logger.warn(
         { entryId: updated.id, error: error.message },
-        'Failed to broadcast time entry update',
+        "Failed to broadcast time entry update",
       );
     }
 
     setTimeout(() => {
-      this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
+      this.eventsGateway.broadcastStatsUpdate(
+        { trigger: "time-entry-updated" },
+        companyId,
+      );
     }, 1000);
 
     return updated;
   }
 
-  async pause(id: string, companyId: string, pauserId: string, pauserRole: UserRole) {
+  async pause(
+    id: string,
+    companyId: string,
+    pauserId: string,
+    pauserRole: UserRole,
+  ) {
     const entry = await this.findOne(id, companyId);
 
-    if (pauserRole !== UserRole.OWNER && pauserRole !== UserRole.ADMIN && pauserRole !== UserRole.SUPER_ADMIN) {
+    if (
+      pauserRole !== UserRole.OWNER &&
+      pauserRole !== UserRole.ADMIN &&
+      pauserRole !== UserRole.SUPER_ADMIN
+    ) {
       if (entry.userId !== pauserId) {
-        throw new ForbiddenException('You can only pause your own time entries');
+        throw new ForbiddenException(
+          "You can only pause your own time entries",
+        );
       }
     }
 
-    if (entry.status !== 'RUNNING') {
-      throw new BadRequestException('Only running entries can be paused');
+    if (entry.status !== "RUNNING") {
+      throw new BadRequestException("Only running entries can be paused");
     }
 
     const transactionResult = await this.prisma.$transaction(async (tx) => {
@@ -744,15 +849,15 @@ export class TimeEntriesService {
       }
 
       // Check status again within transaction
-      if (currentEntry.status !== 'RUNNING') {
-        throw new BadRequestException('Only running entries can be paused');
+      if (currentEntry.status !== "RUNNING") {
+        throw new BadRequestException("Only running entries can be paused");
       }
 
       // Calculate elapsed time within transaction using current entry data
       const now = new Date();
       const start = new Date(currentEntry.startTime).getTime();
       const elapsed = Math.floor((now.getTime() - start) / 1000);
-      
+
       // Log warning if elapsed time is negative (possible clock sync issue)
       if (elapsed < 0) {
         this.logger.warn(
@@ -763,22 +868,24 @@ export class TimeEntriesService {
             now: now.toISOString(),
             elapsed,
           },
-          'Negative elapsed time detected in pause() - possible clock synchronization issue',
+          "Negative elapsed time detected in pause() - possible clock synchronization issue",
         );
       }
-      
+
       const safeElapsed = Math.max(0, elapsed);
       const newDuration = currentEntry.duration + safeElapsed;
 
       if (newDuration < 0) {
-        throw new BadRequestException('Calculated duration cannot be negative. Please check system clock synchronization.');
+        throw new BadRequestException(
+          "Calculated duration cannot be negative. Please check system clock synchronization.",
+        );
       }
 
       const updatedEntry = await tx.timeEntry.update({
         where: { id },
         data: {
           duration: newDuration,
-          status: 'PAUSED',
+          status: "PAUSED",
           startTime: now,
         },
         include: {
@@ -804,11 +911,15 @@ export class TimeEntriesService {
         data: {
           userId: currentEntry.userId,
           projectId: currentEntry.projectId,
-          type: 'PAUSE',
+          type: "PAUSE",
         },
       });
 
-      return { entry: updatedEntry, activityId: activity.id, activityTimestamp: activity.timestamp };
+      return {
+        entry: updatedEntry,
+        activityId: activity.id,
+        activityTimestamp: activity.timestamp,
+      };
     });
 
     const updated = transactionResult.entry;
@@ -826,22 +937,25 @@ export class TimeEntriesService {
             userId: updated.userId,
             userName: updated.user.name,
             userAvatar: updated.user.avatar ?? undefined,
-            type: 'PAUSE',
+            type: "PAUSE",
             projectId: updated.projectId ?? undefined,
             timestamp: activityTimestamp.toISOString(),
           },
           companyId,
         );
       } else {
-        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-          entryId: updated.id,
-          userId: updated.userId,
-        });
+        this.logger.error(
+          `Failed to broadcast activity ${activityId}: user data missing`,
+          {
+            entryId: updated.id,
+            userId: updated.userId,
+          },
+        );
       }
     } catch (error: any) {
       this.logger.warn(
         { activityId, entryId: updated.id, error: error.message },
-        'Failed to broadcast activity',
+        "Failed to broadcast activity",
       );
     }
 
@@ -850,28 +964,42 @@ export class TimeEntriesService {
     } catch (error: any) {
       this.logger.warn(
         { entryId: updated.id, error: error.message },
-        'Failed to broadcast time entry update',
+        "Failed to broadcast time entry update",
       );
     }
 
     setTimeout(() => {
-      this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
+      this.eventsGateway.broadcastStatsUpdate(
+        { trigger: "time-entry-updated" },
+        companyId,
+      );
     }, 1000);
 
     return updated;
   }
 
-  async resume(id: string, companyId: string, resumerId: string, resumerRole: UserRole) {
+  async resume(
+    id: string,
+    companyId: string,
+    resumerId: string,
+    resumerRole: UserRole,
+  ) {
     const entry = await this.findOne(id, companyId);
 
-    if (resumerRole !== UserRole.OWNER && resumerRole !== UserRole.ADMIN && resumerRole !== UserRole.SUPER_ADMIN) {
+    if (
+      resumerRole !== UserRole.OWNER &&
+      resumerRole !== UserRole.ADMIN &&
+      resumerRole !== UserRole.SUPER_ADMIN
+    ) {
       if (entry.userId !== resumerId) {
-        throw new ForbiddenException('You can only resume your own time entries');
+        throw new ForbiddenException(
+          "You can only resume your own time entries",
+        );
       }
     }
 
-    if (entry.status !== 'PAUSED') {
-      throw new BadRequestException('Only paused entries can be resumed');
+    if (entry.status !== "PAUSED") {
+      throw new BadRequestException("Only paused entries can be resumed");
     }
 
     const transactionResult = await this.prisma.$transaction(async (tx) => {
@@ -886,8 +1014,8 @@ export class TimeEntriesService {
         select: { status: true, userId: true },
       });
 
-      if (!currentEntry || currentEntry.status !== 'PAUSED') {
-        throw new BadRequestException('Only paused entries can be resumed');
+      if (!currentEntry || currentEntry.status !== "PAUSED") {
+        throw new BadRequestException("Only paused entries can be resumed");
       }
 
       // Check for active entries BEFORE updating to prevent race conditions
@@ -896,7 +1024,7 @@ export class TimeEntriesService {
         where: {
           userId: currentEntry.userId,
           status: {
-            in: ['RUNNING', 'PAUSED'],
+            in: ["RUNNING", "PAUSED"],
           },
           id: {
             not: id,
@@ -908,7 +1036,9 @@ export class TimeEntriesService {
       });
 
       if (activeEntryCheck) {
-        throw new BadRequestException('User already has an active time entry. Please stop or pause the existing entry first.');
+        throw new BadRequestException(
+          "User already has an active time entry. Please stop or pause the existing entry first.",
+        );
       }
 
       // Update entry - this happens immediately after the check to minimize race condition window
@@ -916,7 +1046,7 @@ export class TimeEntriesService {
         where: { id },
         data: {
           startTime: new Date(),
-          status: 'RUNNING',
+          status: "RUNNING",
         },
         include: {
           user: {
@@ -941,11 +1071,15 @@ export class TimeEntriesService {
         data: {
           userId: updatedEntry.userId,
           projectId: updatedEntry.projectId,
-          type: 'RESUME',
+          type: "RESUME",
         },
       });
 
-      return { entry: updatedEntry, activityId: activity.id, activityTimestamp: activity.timestamp };
+      return {
+        entry: updatedEntry,
+        activityId: activity.id,
+        activityTimestamp: activity.timestamp,
+      };
     });
 
     const updated = transactionResult.entry;
@@ -963,22 +1097,25 @@ export class TimeEntriesService {
             userId: updated.userId,
             userName: updated.user.name,
             userAvatar: updated.user.avatar ?? undefined,
-            type: 'RESUME',
+            type: "RESUME",
             projectId: updated.projectId ?? undefined,
             timestamp: activityTimestamp.toISOString(),
           },
           companyId,
         );
       } else {
-        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-          entryId: updated.id,
-          userId: updated.userId,
-        });
+        this.logger.error(
+          `Failed to broadcast activity ${activityId}: user data missing`,
+          {
+            entryId: updated.id,
+            userId: updated.userId,
+          },
+        );
       }
     } catch (error: any) {
       this.logger.warn(
         { activityId, entryId: updated.id, error: error.message },
-        'Failed to broadcast activity',
+        "Failed to broadcast activity",
       );
     }
 
@@ -987,7 +1124,7 @@ export class TimeEntriesService {
     } catch (error: any) {
       this.logger.warn(
         { entryId: updated.id, error: error.message },
-        'Failed to broadcast time entry update',
+        "Failed to broadcast time entry update",
       );
     }
 
@@ -1001,18 +1138,25 @@ export class TimeEntriesService {
       // Если не удалось обновить isIdle, логируем, но не критично
       this.logger.warn(
         { userId: updated.userId, error: error.message },
-        'Failed to reset isIdle when resuming time entry',
+        "Failed to reset isIdle when resuming time entry",
       );
     }
 
     setTimeout(() => {
-      this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
+      this.eventsGateway.broadcastStatsUpdate(
+        { trigger: "time-entry-updated" },
+        companyId,
+      );
     }, 1000);
 
     return updated;
   }
 
-  async findAllActivities(companyId: string, userId?: string, limit: number = 100) {
+  async findAllActivities(
+    companyId: string,
+    userId?: string,
+    limit: number = 100,
+  ) {
     // Validate and constrain limit to prevent performance issues
     const validatedLimit = Math.min(Math.max(1, limit), 1000); // Between 1 and 1000
 
@@ -1033,7 +1177,9 @@ export class TimeEntriesService {
       });
 
       if (!user) {
-        throw new NotFoundException(`User with ID ${userId} not found in your company`);
+        throw new NotFoundException(
+          `User with ID ${userId} not found in your company`,
+        );
       }
 
       where.userId = userId;
@@ -1059,7 +1205,7 @@ export class TimeEntriesService {
         },
       },
       orderBy: {
-        timestamp: 'desc',
+        timestamp: "desc",
       },
       take: validatedLimit,
     });
@@ -1069,7 +1215,7 @@ export class TimeEntriesService {
       .map((activity) => ({
         id: activity.id,
         userId: activity.userId,
-        userName: activity.user?.name || 'Unknown User',
+        userName: activity.user?.name || "Unknown User",
         userAvatar: activity.user?.avatar ?? undefined,
         type: activity.type.toLowerCase(),
         timestamp: activity.timestamp,
@@ -1077,7 +1223,12 @@ export class TimeEntriesService {
       }));
   }
 
-  async remove(id: string, companyId: string, deleterId: string, deleterRole: UserRole) {
+  async remove(
+    id: string,
+    companyId: string,
+    deleterId: string,
+    deleterRole: UserRole,
+  ) {
     // Initial check for existence and companyId
     const entry = await this.findOne(id, companyId);
 
@@ -1098,9 +1249,15 @@ export class TimeEntriesService {
       }
 
       // Check permissions
-      if (deleterRole !== UserRole.OWNER && deleterRole !== UserRole.ADMIN && deleterRole !== UserRole.SUPER_ADMIN) {
+      if (
+        deleterRole !== UserRole.OWNER &&
+        deleterRole !== UserRole.ADMIN &&
+        deleterRole !== UserRole.SUPER_ADMIN
+      ) {
         if (currentEntry.userId !== deleterId) {
-          throw new ForbiddenException('You can only delete your own time entries');
+          throw new ForbiddenException(
+            "You can only delete your own time entries",
+          );
         }
       }
 
@@ -1113,4 +1270,3 @@ export class TimeEntriesService {
     return deleted;
   }
 }
-

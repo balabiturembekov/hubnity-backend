@@ -1,47 +1,47 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
-import { LoggerModule } from 'nestjs-pino';
-import { ConfigService } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { PrismaModule } from './prisma/prisma.module';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { ProjectsModule } from './projects/projects.module';
-import { TimeEntriesModule } from './time-entries/time-entries.module';
-import { EventsModule } from './events/events.module';
-import { ScreenshotsModule } from './screenshots/screenshots.module';
-import { TeamActivityModule } from './team-activity/team-activity.module';
-import { CompaniesModule } from './companies/companies.module';
-import { CacheModule } from './cache/cache.module';
-import { IdleDetectionModule } from './idle-detection/idle-detection.module';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import { APP_GUARD } from "@nestjs/core";
+import { LoggerModule } from "nestjs-pino";
+import { ConfigService } from "@nestjs/config";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
+import { PrismaModule } from "./prisma/prisma.module";
+import { AuthModule } from "./auth/auth.module";
+import { UsersModule } from "./users/users.module";
+import { ProjectsModule } from "./projects/projects.module";
+import { TimeEntriesModule } from "./time-entries/time-entries.module";
+import { EventsModule } from "./events/events.module";
+import { ScreenshotsModule } from "./screenshots/screenshots.module";
+import { TeamActivityModule } from "./team-activity/team-activity.module";
+import { CompaniesModule } from "./companies/companies.module";
+import { CacheModule } from "./cache/cache.module";
+import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
 
 @Module({
   imports: [
     CacheModule,
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ".env",
     }),
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const isProduction = configService.get('NODE_ENV') === 'production';
+        const isProduction = configService.get("NODE_ENV") === "production";
         return {
           pinoHttp: {
-            level: isProduction ? 'info' : 'debug',
+            level: isProduction ? "info" : "debug",
             transport: isProduction
               ? undefined
               : {
-                  target: 'pino-pretty',
+                  target: "pino-pretty",
                   options: {
                     colorize: true,
                     singleLine: false,
-                    translateTime: 'HH:MM:ss Z',
-                    ignore: 'pid,hostname',
+                    translateTime: "HH:MM:ss Z",
+                    ignore: "pid,hostname",
                   },
                 },
             serializers: {
@@ -51,7 +51,7 @@ import { IdleDetectionModule } from './idle-detection/idle-detection.module';
                 url: req.url,
                 headers: {
                   host: req.headers?.host,
-                  'user-agent': req.headers?.['user-agent'],
+                  "user-agent": req.headers?.["user-agent"],
                 },
               }),
               res: (res: any) => ({
@@ -64,22 +64,22 @@ import { IdleDetectionModule } from './idle-detection/idle-detection.module';
               }),
             },
             genReqId: (req: any, res: any) => {
-              const existingId = req.id ?? req.headers['x-request-id'];
+              const existingId = req.id ?? req.headers["x-request-id"];
               if (existingId) return existingId;
               const id = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-              res.setHeader('X-Request-Id', id);
+              res.setHeader("X-Request-Id", id);
               return id;
             },
             customProps: (req: any) => ({
-              context: 'HTTP',
+              context: "HTTP",
             }),
             customLogLevel: (req: any, res: any, err: any) => {
               if (res.statusCode >= 400 && res.statusCode < 500) {
-                return 'warn';
+                return "warn";
               } else if (res.statusCode >= 500 || err) {
-                return 'error';
+                return "error";
               }
-              return 'info';
+              return "info";
             },
           },
         };
@@ -89,7 +89,7 @@ import { IdleDetectionModule } from './idle-detection/idle-detection.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const isProduction = configService.get('NODE_ENV') === 'production';
+        const isProduction = configService.get("NODE_ENV") === "production";
         return [
           {
             ttl: 60000, // 1 minute
@@ -119,4 +119,3 @@ import { IdleDetectionModule } from './idle-detection/idle-detection.module';
   ],
 })
 export class AppModule {}
-

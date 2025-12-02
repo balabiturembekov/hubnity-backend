@@ -1,9 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../prisma/prisma.service';
-import { PinoLogger } from 'nestjs-pino';
+import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { PassportStrategy } from "@nestjs/passport";
+import { ExtractJwt, Strategy } from "passport-jwt";
+import { ConfigService } from "@nestjs/config";
+import { PrismaService } from "../../prisma/prisma.service";
+import { PinoLogger } from "nestjs-pino";
 
 interface JwtPayload {
   sub: string;
@@ -24,14 +24,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: (() => {
-        const secret = configService.get('JWT_SECRET');
-        if (!secret || secret === 'secret') {
-          logger.warn('⚠️  WARNING: JWT_SECRET is not set or using default "secret". This is insecure in production!');
-          if (process.env.NODE_ENV === 'production') {
-            throw new Error('JWT_SECRET must be set in production environment');
+        const secret = configService.get("JWT_SECRET");
+        if (!secret || secret === "secret") {
+          logger.warn(
+            '⚠️  WARNING: JWT_SECRET is not set or using default "secret". This is insecure in production!',
+          );
+          if (process.env.NODE_ENV === "production") {
+            throw new Error("JWT_SECRET must be set in production environment");
           }
         }
-        return secret || 'secret';
+        return secret || "secret";
       })(),
     });
     this.logger.setContext(JwtStrategy.name);
@@ -40,18 +42,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     // Validate payload structure
     if (!payload || !payload.sub) {
-      throw new UnauthorizedException('Invalid token payload');
+      throw new UnauthorizedException("Invalid token payload");
     }
 
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(payload.sub)) {
-      throw new UnauthorizedException('Invalid token payload - invalid user ID format');
+      throw new UnauthorizedException(
+        "Invalid token payload - invalid user ID format",
+      );
     }
 
     // Explicitly check expiration (Passport already checks, but this is for clarity)
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      throw new UnauthorizedException('Token expired');
+      throw new UnauthorizedException("Token expired");
     }
 
     // Require companyId in payload
@@ -60,9 +65,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         {
           payloadSub: payload.sub,
         },
-        'Token missing companyId',
+        "Token missing companyId",
       );
-      throw new UnauthorizedException('Token is invalid - missing companyId');
+      throw new UnauthorizedException("Token is invalid - missing companyId");
     }
 
     const user = await this.prisma.user.findUnique({
@@ -85,7 +90,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       },
     });
 
-    if (!user || user.status !== 'ACTIVE') {
+    if (!user || user.status !== "ACTIVE") {
       throw new UnauthorizedException();
     }
 
@@ -96,9 +101,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           userId: user.id,
           companyId: user.companyId,
         },
-        'User has no associated company',
+        "User has no associated company",
       );
-      throw new UnauthorizedException('User company not found');
+      throw new UnauthorizedException("User company not found");
     }
 
     // Verify companyId matches
@@ -109,12 +114,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tokenCompanyId: payload.companyId,
           dbCompanyId: user.companyId,
         },
-        'Token companyId mismatch',
+        "Token companyId mismatch",
       );
-      throw new UnauthorizedException('Token is invalid - user company mismatch');
+      throw new UnauthorizedException(
+        "Token is invalid - user company mismatch",
+      );
     }
 
     return user;
   }
 }
-

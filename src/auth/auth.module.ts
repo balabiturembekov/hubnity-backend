@@ -1,12 +1,12 @@
-import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
-import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { PrismaModule } from '../prisma/prisma.module';
+import { Module } from "@nestjs/common";
+import { JwtModule } from "@nestjs/jwt";
+import { PassportModule } from "@nestjs/passport";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
+import { AuthService } from "./auth.service";
+import { AuthController } from "./auth.controller";
+import { JwtStrategy } from "./strategies/jwt.strategy";
+import { PrismaModule } from "../prisma/prisma.module";
 
 @Module({
   imports: [
@@ -17,17 +17,17 @@ import { PrismaModule } from '../prisma/prisma.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        const secret = configService.get('JWT_SECRET');
-        if (!secret || secret === 'secret') {
+        const secret = configService.get("JWT_SECRET");
+        if (!secret || secret === "secret") {
           // Warning is already logged in jwt.strategy.ts, no need to duplicate
-          if (process.env.NODE_ENV === 'production') {
-            throw new Error('JWT_SECRET must be set in production environment');
+          if (process.env.NODE_ENV === "production") {
+            throw new Error("JWT_SECRET must be set in production environment");
           }
         }
         return {
-          secret: secret || 'secret',
+          secret: secret || "secret",
           signOptions: {
-            expiresIn: configService.get('JWT_EXPIRES_IN') || '7d',
+            expiresIn: configService.get("JWT_EXPIRES_IN") || "7d",
           },
         };
       },
@@ -39,4 +39,3 @@ import { PrismaModule } from '../prisma/prisma.module';
   exports: [AuthService],
 })
 export class AuthModule {}
-

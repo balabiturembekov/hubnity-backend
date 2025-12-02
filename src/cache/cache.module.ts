@@ -1,6 +1,6 @@
-import { Global, Module } from '@nestjs/common';
-import { CacheService } from './cache.service';
-import { ConfigModule } from '@nestjs/config';
+import { Global, Module } from "@nestjs/common";
+import { CacheService } from "./cache.service";
+import { ConfigModule } from "@nestjs/config";
 
 @Global()
 @Module({
@@ -9,4 +9,3 @@ import { ConfigModule } from '@nestjs/config';
   exports: [CacheService],
 })
 export class CacheModule {}
-

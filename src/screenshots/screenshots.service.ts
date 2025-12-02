@@ -1,16 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { PinoLogger } from 'nestjs-pino';
-import { PrismaService } from '../prisma/prisma.service';
-import * as fs from 'fs/promises';
-import * as fsSync from 'fs';
-import * as path from 'path';
-import sharp from 'sharp';
-import { UploadScreenshotDto } from './dto/upload-screenshot.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from "@nestjs/common";
+import { PinoLogger } from "nestjs-pino";
+import { PrismaService } from "../prisma/prisma.service";
+import * as fs from "fs/promises";
+import * as fsSync from "fs";
+import * as path from "path";
+import sharp from "sharp";
+import { UploadScreenshotDto } from "./dto/upload-screenshot.dto";
 
 @Injectable()
 export class ScreenshotsService {
-  private uploadsDir = path.join(process.cwd(), 'uploads', 'screenshots');
-  private thumbnailsDir = path.join(process.cwd(), 'uploads', 'thumbnails');
+  private uploadsDir = path.join(process.cwd(), "uploads", "screenshots");
+  private thumbnailsDir = path.join(process.cwd(), "uploads", "thumbnails");
   private directoriesInitialized = false;
 
   constructor(
@@ -19,7 +24,10 @@ export class ScreenshotsService {
   ) {
     this.logger.setContext(ScreenshotsService.name);
     this.ensureDirectoriesExist().catch((error) => {
-      this.logger.error({ error: error.message, stack: error.stack }, 'Failed to initialize upload directories');
+      this.logger.error(
+        { error: error.message, stack: error.stack },
+        "Failed to initialize upload directories",
+      );
     });
   }
 
@@ -30,7 +38,10 @@ export class ScreenshotsService {
       await fs.mkdir(this.thumbnailsDir, { recursive: true });
       this.directoriesInitialized = true;
     } catch (error: any) {
-      this.logger.error({ error: error.message, stack: error.stack }, 'Failed to create upload directories');
+      this.logger.error(
+        { error: error.message, stack: error.stack },
+        "Failed to create upload directories",
+      );
       throw error;
     }
   }
@@ -51,7 +62,7 @@ export class ScreenshotsService {
     });
 
     if (!timeEntry) {
-      throw new NotFoundException('Time entry not found');
+      throw new NotFoundException("Time entry not found");
     }
 
     if (timeEntry.userId !== userId) {
@@ -60,50 +71,57 @@ export class ScreenshotsService {
           id: userId,
           companyId,
           role: {
-            in: ['ADMIN', 'OWNER', 'SUPER_ADMIN'],
+            in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
           },
         },
       });
 
       if (!user) {
-        throw new ForbiddenException('You can only upload screenshots for your own time entries');
+        throw new ForbiddenException(
+          "You can only upload screenshots for your own time entries",
+        );
       }
     }
 
-    if (!dto.imageData || typeof dto.imageData !== 'string') {
-      throw new BadRequestException('Invalid image data');
+    if (!dto.imageData || typeof dto.imageData !== "string") {
+      throw new BadRequestException("Invalid image data");
     }
 
     const maxBase64Length = 50 * 1024 * 1024;
     if (dto.imageData.length > maxBase64Length) {
-      throw new BadRequestException('Image data exceeds maximum size (50MB)');
+      throw new BadRequestException("Image data exceeds maximum size (50MB)");
     }
 
-    const base64Data = dto.imageData.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+    const base64Data = dto.imageData.replace(
+      /^data:image\/(png|jpeg|jpg|webp);base64,/,
+      "",
+    );
     if (!base64Data || base64Data.length === 0) {
-      throw new BadRequestException('Invalid image data format');
+      throw new BadRequestException("Invalid image data format");
     }
 
     const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
     if (!base64Regex.test(base64Data)) {
-      throw new BadRequestException('Invalid base64 encoding');
+      throw new BadRequestException("Invalid base64 encoding");
     }
 
     try {
       let imageBuffer: Buffer;
       try {
-        imageBuffer = Buffer.from(base64Data, 'base64');
+        imageBuffer = Buffer.from(base64Data, "base64");
       } catch (error) {
-        throw new BadRequestException('Failed to decode base64 image data');
+        throw new BadRequestException("Failed to decode base64 image data");
       }
 
       const maxBufferSize = 50 * 1024 * 1024;
       if (imageBuffer.length > maxBufferSize) {
-        throw new BadRequestException('Image buffer exceeds maximum size (50MB)');
+        throw new BadRequestException(
+          "Image buffer exceeds maximum size (50MB)",
+        );
       }
 
       if (imageBuffer.length === 0) {
-        throw new BadRequestException('Image buffer is empty');
+        throw new BadRequestException("Image buffer is empty");
       }
 
       const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
@@ -113,13 +131,15 @@ export class ScreenshotsService {
       try {
         imageMetadata = await sharp(imageBuffer).metadata();
         if (!imageMetadata || !imageMetadata.width || !imageMetadata.height) {
-          throw new BadRequestException('Invalid image format or corrupted image data');
+          throw new BadRequestException(
+            "Invalid image format or corrupted image data",
+          );
         }
       } catch (error) {
         if (error instanceof BadRequestException) {
           throw error;
         }
-        throw new BadRequestException('Invalid or unsupported image format');
+        throw new BadRequestException("Invalid or unsupported image format");
       }
 
       let processedImage: Buffer;
@@ -127,13 +147,16 @@ export class ScreenshotsService {
         processedImage = await sharp(imageBuffer)
           .jpeg({ quality: 85 })
           .resize(1920, 1080, {
-            fit: 'inside',
+            fit: "inside",
             withoutEnlargement: true,
           })
           .toBuffer();
       } catch (error: any) {
-        this.logger.error({ error: error.message, stack: error?.stack }, 'Error processing image with sharp');
-        throw new BadRequestException('Failed to process image');
+        this.logger.error(
+          { error: error.message, stack: error?.stack },
+          "Error processing image with sharp",
+        );
+        throw new BadRequestException("Failed to process image");
       }
 
       await fs.writeFile(filepath, processedImage);
@@ -145,18 +168,24 @@ export class ScreenshotsService {
       try {
         thumbnail = await sharp(imageBuffer)
           .resize(200, 150, {
-            fit: 'cover',
+            fit: "cover",
           })
           .jpeg({ quality: 80 })
           .toBuffer();
       } catch (error: any) {
-        this.logger.error({ error: error.message, stack: error?.stack }, 'Error generating thumbnail');
+        this.logger.error(
+          { error: error.message, stack: error?.stack },
+          "Error generating thumbnail",
+        );
         try {
           await fs.unlink(filepath);
         } catch (deleteError: any) {
-          this.logger.error({ error: deleteError.message, stack: deleteError?.stack }, 'Failed to cleanup image file after thumbnail error');
+          this.logger.error(
+            { error: deleteError.message, stack: deleteError?.stack },
+            "Failed to cleanup image file after thumbnail error",
+          );
         }
-        throw new BadRequestException('Failed to generate thumbnail');
+        throw new BadRequestException("Failed to generate thumbnail");
       }
 
       await fs.writeFile(thumbnailPath, thumbnail);
@@ -189,13 +218,17 @@ export class ScreenshotsService {
           userId,
           companyId,
         },
-        'Error saving screenshot',
+        "Error saving screenshot",
       );
-      throw new BadRequestException('Failed to save screenshot');
+      throw new BadRequestException("Failed to save screenshot");
     }
   }
 
-  async findByTimeEntry(timeEntryId: string, companyId: string, userId: string) {
+  async findByTimeEntry(
+    timeEntryId: string,
+    companyId: string,
+    userId: string,
+  ) {
     const timeEntry = await this.prisma.timeEntry.findFirst({
       where: {
         id: timeEntryId,
@@ -206,7 +239,7 @@ export class ScreenshotsService {
     });
 
     if (!timeEntry) {
-      throw new NotFoundException('Time entry not found');
+      throw new NotFoundException("Time entry not found");
     }
 
     if (timeEntry.userId !== userId) {
@@ -215,13 +248,13 @@ export class ScreenshotsService {
           id: userId,
           companyId,
           role: {
-            in: ['ADMIN', 'OWNER', 'SUPER_ADMIN'],
+            in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
           },
         },
       });
 
       if (!user) {
-        throw new ForbiddenException('Access denied');
+        throw new ForbiddenException("Access denied");
       }
     }
 
@@ -230,7 +263,7 @@ export class ScreenshotsService {
         timeEntryId,
       },
       orderBy: {
-        timestamp: 'desc',
+        timestamp: "desc",
       },
     });
   }
@@ -251,17 +284,19 @@ export class ScreenshotsService {
       });
 
       if (!screenshot) {
-        throw new NotFoundException('Screenshot not found');
+        throw new NotFoundException("Screenshot not found");
       }
 
       // Check for null timeEntry or user
       if (!screenshot.timeEntry || !screenshot.timeEntry.user) {
-        throw new NotFoundException('Time entry or user not found for this screenshot');
+        throw new NotFoundException(
+          "Time entry or user not found for this screenshot",
+        );
       }
 
       // Verify companyId
       if (screenshot.timeEntry.user.companyId !== companyId) {
-        throw new ForbiddenException('Access denied');
+        throw new ForbiddenException("Access denied");
       }
 
       // Check permissions
@@ -271,37 +306,53 @@ export class ScreenshotsService {
             id: userId,
             companyId,
             role: {
-              in: ['ADMIN', 'OWNER', 'SUPER_ADMIN'],
+              in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
             },
           },
         });
 
         if (!user) {
-          throw new ForbiddenException('Access denied');
+          throw new ForbiddenException("Access denied");
         }
       }
 
       // Delete files
       try {
-        const normalizeAndValidatePath = (fileUrl: string, expectedDir: string): string | null => {
+        const normalizeAndValidatePath = (
+          fileUrl: string,
+          expectedDir: string,
+        ): string | null => {
           if (!fileUrl) return null;
-          if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+          if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
             return null;
           }
-          const normalizedUrl = fileUrl.startsWith('/') ? fileUrl.substring(1) : fileUrl;
+          const normalizedUrl = fileUrl.startsWith("/")
+            ? fileUrl.substring(1)
+            : fileUrl;
           const resolvedPath = path.resolve(process.cwd(), normalizedUrl);
           const expectedDirPath = path.resolve(expectedDir);
 
-          if (!resolvedPath.startsWith(expectedDirPath + path.sep) && resolvedPath !== expectedDirPath) {
-            this.logger.warn(`Path traversal attempt detected: ${fileUrl} resolved to ${resolvedPath}, expected within ${expectedDirPath}`);
+          if (
+            !resolvedPath.startsWith(expectedDirPath + path.sep) &&
+            resolvedPath !== expectedDirPath
+          ) {
+            this.logger.warn(
+              `Path traversal attempt detected: ${fileUrl} resolved to ${resolvedPath}, expected within ${expectedDirPath}`,
+            );
             return null;
           }
           return resolvedPath;
         };
 
-        const imagePath = normalizeAndValidatePath(screenshot.imageUrl, this.uploadsDir);
+        const imagePath = normalizeAndValidatePath(
+          screenshot.imageUrl,
+          this.uploadsDir,
+        );
         const thumbnailPath = screenshot.thumbnailUrl
-          ? normalizeAndValidatePath(screenshot.thumbnailUrl, this.thumbnailsDir)
+          ? normalizeAndValidatePath(
+              screenshot.thumbnailUrl,
+              this.thumbnailsDir,
+            )
           : null;
 
         if (imagePath && fsSync.existsSync(imagePath)) {
@@ -319,7 +370,7 @@ export class ScreenshotsService {
             screenshotId,
             imageUrl: screenshot.imageUrl,
           },
-          'Error deleting screenshot files',
+          "Error deleting screenshot files",
         );
         // Continue with database deletion even if file deletion fails
       }
@@ -333,4 +384,3 @@ export class ScreenshotsService {
     return { success: true };
   }
 }
-

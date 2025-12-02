@@ -1,7 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { EventsGateway } from '../events/events.gateway';
-import { CacheService } from '../cache/cache.service';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { EventsGateway } from "../events/events.gateway";
+import { CacheService } from "../cache/cache.service";
 
 @Injectable()
 export class CompaniesService {
@@ -12,8 +16,12 @@ export class CompaniesService {
   ) {}
 
   async getScreenshotSettings(companyId: string) {
-    if (!companyId || typeof companyId !== 'string' || companyId.trim() === '') {
-      throw new NotFoundException('Invalid company ID');
+    if (
+      !companyId ||
+      typeof companyId !== "string" ||
+      companyId.trim() === ""
+    ) {
+      throw new NotFoundException("Invalid company ID");
     }
 
     const cacheKey = `company:${companyId}:settings`;
@@ -33,7 +41,7 @@ export class CompaniesService {
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException("Company not found");
     }
 
     const settings = {
@@ -48,8 +56,12 @@ export class CompaniesService {
   }
 
   async getIdleDetectionSettings(companyId: string) {
-    if (!companyId || typeof companyId !== 'string' || companyId.trim() === '') {
-      throw new NotFoundException('Invalid company ID');
+    if (
+      !companyId ||
+      typeof companyId !== "string" ||
+      companyId.trim() === ""
+    ) {
+      throw new NotFoundException("Invalid company ID");
     }
 
     const company = await this.prisma.company.findUnique({
@@ -61,7 +73,7 @@ export class CompaniesService {
     });
 
     if (!company) {
-      throw new NotFoundException('Company not found');
+      throw new NotFoundException("Company not found");
     }
 
     return {
@@ -74,21 +86,34 @@ export class CompaniesService {
     companyId: string,
     settings: { idleDetectionEnabled?: boolean; idleThreshold?: number },
   ) {
-    if (settings.idleDetectionEnabled !== undefined && typeof settings.idleDetectionEnabled !== 'boolean') {
-      throw new ForbiddenException('idleDetectionEnabled must be a boolean value');
+    if (
+      settings.idleDetectionEnabled !== undefined &&
+      typeof settings.idleDetectionEnabled !== "boolean"
+    ) {
+      throw new ForbiddenException(
+        "idleDetectionEnabled must be a boolean value",
+      );
     }
 
     if (settings.idleThreshold !== undefined) {
-      if (typeof settings.idleThreshold !== 'number' || !Number.isInteger(settings.idleThreshold) || isNaN(settings.idleThreshold)) {
-        throw new ForbiddenException('idleThreshold must be an integer');
+      if (
+        typeof settings.idleThreshold !== "number" ||
+        !Number.isInteger(settings.idleThreshold) ||
+        isNaN(settings.idleThreshold)
+      ) {
+        throw new ForbiddenException("idleThreshold must be an integer");
       }
 
       if (settings.idleThreshold < 60) {
-        throw new ForbiddenException('idleThreshold must be at least 60 seconds (1 minute)');
+        throw new ForbiddenException(
+          "idleThreshold must be at least 60 seconds (1 minute)",
+        );
       }
 
       if (settings.idleThreshold > 3600) {
-        throw new ForbiddenException('idleThreshold cannot exceed 3600 seconds (1 hour)');
+        throw new ForbiddenException(
+          "idleThreshold cannot exceed 3600 seconds (1 hour)",
+        );
       }
     }
 
@@ -121,23 +146,37 @@ export class CompaniesService {
     };
   }
 
-  async updateScreenshotSettings(companyId: string, settings: { screenshotEnabled?: boolean; screenshotInterval?: number }) {
-    if (settings.screenshotEnabled !== undefined && typeof settings.screenshotEnabled !== 'boolean') {
-      throw new ForbiddenException('screenshotEnabled must be a boolean value');
+  async updateScreenshotSettings(
+    companyId: string,
+    settings: { screenshotEnabled?: boolean; screenshotInterval?: number },
+  ) {
+    if (
+      settings.screenshotEnabled !== undefined &&
+      typeof settings.screenshotEnabled !== "boolean"
+    ) {
+      throw new ForbiddenException("screenshotEnabled must be a boolean value");
     }
 
     if (settings.screenshotInterval !== undefined) {
-      if (typeof settings.screenshotInterval !== 'number' || !Number.isInteger(settings.screenshotInterval) || isNaN(settings.screenshotInterval)) {
-        throw new ForbiddenException('screenshotInterval must be an integer');
+      if (
+        typeof settings.screenshotInterval !== "number" ||
+        !Number.isInteger(settings.screenshotInterval) ||
+        isNaN(settings.screenshotInterval)
+      ) {
+        throw new ForbiddenException("screenshotInterval must be an integer");
       }
 
       if (settings.screenshotInterval <= 0) {
-        throw new ForbiddenException('screenshotInterval must be a positive integer');
+        throw new ForbiddenException(
+          "screenshotInterval must be a positive integer",
+        );
       }
 
       const validIntervals = [30, 60, 300, 600];
       if (!validIntervals.includes(settings.screenshotInterval)) {
-        throw new ForbiddenException('Invalid screenshot interval. Allowed values: 30, 60, 300, 600 seconds');
+        throw new ForbiddenException(
+          "Invalid screenshot interval. Allowed values: 30, 60, 300, 600 seconds",
+        );
       }
     }
 
@@ -169,9 +208,11 @@ export class CompaniesService {
 
     await this.cache.invalidateCompanySettings(companyId);
     await this.cache.set(`company:${companyId}:settings`, updatedSettings, 600);
-    this.eventsGateway.broadcastScreenshotSettingsUpdate(updatedSettings, companyId);
+    this.eventsGateway.broadcastScreenshotSettingsUpdate(
+      updatedSettings,
+      companyId,
+    );
 
     return updatedSettings;
   }
 }
-

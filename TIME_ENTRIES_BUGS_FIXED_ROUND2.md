@@ -5,9 +5,11 @@
 ### Безопасность (Data Leakage)
 
 #### BUG 40: Отсутствие проверки userId в `findAll()`
+
 **Проблема**: Метод `findAll()` не проверял, что переданный `userId` принадлежит той же компании. Это могло привести к утечке данных между компаниями.
 
 **Исправление**: Добавлена проверка существования пользователя в компании перед фильтрацией:
+
 ```typescript
 if (userId) {
   const user = await this.prisma.user.findFirst({
@@ -15,18 +17,22 @@ if (userId) {
     select: { id: true },
   });
   if (!user) {
-    throw new NotFoundException(`User with ID ${userId} not found in your company`);
+    throw new NotFoundException(
+      `User with ID ${userId} not found in your company`,
+    );
   }
   where.userId = userId;
 }
 ```
 
 #### BUG 41: Отсутствие проверки userId в `findActive()`
+
 **Проблема**: Аналогично `findAll()`, метод `findActive()` не проверял принадлежность `userId` к компании.
 
 **Исправление**: Добавлена та же проверка, что и в `findAll()`.
 
 #### BUG 42: Отсутствие проверки userId в `findAllActivities()`
+
 **Проблема**: Метод `findAllActivities()` не проверял принадлежность `userId` к компании.
 
 **Исправление**: Добавлена та же проверка, что и в `findAll()`.
@@ -34,9 +40,11 @@ if (userId) {
 ### Race Conditions и Консистентность данных
 
 #### BUG 43: Использование `now` вне транзакции в `pause()`
+
 **Проблема**: В методе `pause()` переменная `now` создавалась вне транзакции, но использовалась внутри. Это могло привести к рассинхронизации времени, если между созданием `now` и использованием в транзакции прошло время.
 
 **Исправление**: Перемещено создание `now` и пересчет `newDuration` внутрь транзакции на основе актуальных данных `currentEntry`:
+
 ```typescript
 const transactionResult = await this.prisma.$transaction(async (tx) => {
   const currentEntry = await tx.timeEntry.findFirst({...});
@@ -48,9 +56,11 @@ const transactionResult = await this.prisma.$transaction(async (tx) => {
 ```
 
 #### BUG 44: Использование `endTime` и `duration` вне транзакции в `stop()`
+
 **Проблема**: В методе `stop()` переменная `endTime` создавалась вне транзакции, а `duration` вычислялась на основе `entry.duration`, который мог измениться между проверкой и транзакцией.
 
 **Исправление**: Перемещено создание `endTime` и пересчет `finalDuration` внутрь транзакции на основе актуальных данных `currentEntry`:
+
 ```typescript
 const transactionResult = await this.prisma.$transaction(async (tx) => {
   const currentEntry = await tx.timeEntry.findFirst({...});
@@ -62,9 +72,11 @@ const transactionResult = await this.prisma.$transaction(async (tx) => {
 ```
 
 #### BUG 45: Проверка прав доступа вне транзакции в `update()`
+
 **Проблема**: В методе `update()` проверка прав доступа выполнялась до транзакции. Если entry был удален между проверкой и транзакцией, проверка прав не выполнялась для удаленного entry.
 
 **Исправление**: Перемещена проверка прав доступа внутрь транзакции после чтения `currentEntry`:
+
 ```typescript
 const updated = await this.prisma.$transaction(async (tx) => {
   const currentEntry = await tx.timeEntry.findFirst({...});
@@ -88,4 +100,3 @@ const updated = await this.prisma.$transaction(async (tx) => {
   - Race conditions: 3 бага
 
 Все исправления протестированы компиляцией. Код готов к использованию.
-

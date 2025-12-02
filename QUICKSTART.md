@@ -51,4 +51,3 @@ docker-compose down
 ## Полная документация
 
 См. [README.DOCKER.md](./README.DOCKER.md) для детальной информации.
-

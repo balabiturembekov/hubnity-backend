@@ -1,11 +1,20 @@
-import { IsString, IsEmail, MinLength, MaxLength, IsOptional, IsEnum, IsNumber, Min } from 'class-validator';
-import { UserRole, UserStatus } from '@prisma/client';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsString,
+  IsEmail,
+  MinLength,
+  MaxLength,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  Min,
+} from "class-validator";
+import { UserRole, UserStatus } from "@prisma/client";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateUserDto {
   @ApiProperty({
-    description: 'Имя пользователя',
-    example: 'Иван Иванов',
+    description: "Имя пользователя",
+    example: "Иван Иванов",
     minLength: 1,
     maxLength: 255,
   })
@@ -15,25 +24,25 @@ export class CreateUserDto {
   name: string;
 
   @ApiProperty({
-    description: 'Email пользователя',
-    example: 'user@example.com',
-    format: 'email',
+    description: "Email пользователя",
+    example: "user@example.com",
+    format: "email",
   })
   @IsEmail()
   email: string;
 
   @ApiProperty({
-    description: 'Пароль пользователя (минимум 8 символов)',
-    example: 'password123',
+    description: "Пароль пользователя (минимум 8 символов)",
+    example: "password123",
     minLength: 8,
-    format: 'password',
+    format: "password",
   })
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters long' })
+  @MinLength(8, { message: "Password must be at least 8 characters long" })
   password: string;
 
   @ApiPropertyOptional({
-    description: 'Роль пользователя',
+    description: "Роль пользователя",
     enum: UserRole,
     example: UserRole.EMPLOYEE,
     default: UserRole.EMPLOYEE,
@@ -43,7 +52,7 @@ export class CreateUserDto {
   role?: UserRole;
 
   @ApiPropertyOptional({
-    description: 'Статус пользователя',
+    description: "Статус пользователя",
     enum: UserStatus,
     example: UserStatus.ACTIVE,
     default: UserStatus.ACTIVE,
@@ -53,8 +62,8 @@ export class CreateUserDto {
   status?: UserStatus;
 
   @ApiPropertyOptional({
-    description: 'URL аватара пользователя',
-    example: 'https://example.com/avatar.jpg',
+    description: "URL аватара пользователя",
+    example: "https://example.com/avatar.jpg",
     type: String,
   })
   @IsOptional()
@@ -62,7 +71,7 @@ export class CreateUserDto {
   avatar?: string;
 
   @ApiPropertyOptional({
-    description: 'Почасовая ставка (в долларах)',
+    description: "Почасовая ставка (в долларах)",
     example: 25.5,
     minimum: 0,
     type: Number,
@@ -72,4 +81,3 @@ export class CreateUserDto {
   @Min(0)
   hourlyRate?: number;
 }
-

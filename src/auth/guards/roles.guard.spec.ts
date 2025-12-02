@@ -1,9 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { RolesGuard } from './roles.guard';
+import { Test, TestingModule } from "@nestjs/testing";
+import { ExecutionContext } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { RolesGuard } from "./roles.guard";
 
-describe('RolesGuard', () => {
+describe("RolesGuard", () => {
   let guard: RolesGuard;
   let reflector: Reflector;
 
@@ -11,7 +11,10 @@ describe('RolesGuard', () => {
     get: jest.fn(),
   };
 
-  const createMockExecutionContext = (user?: any, handler?: any): ExecutionContext => {
+  const createMockExecutionContext = (
+    user?: any,
+    handler?: any,
+  ): ExecutionContext => {
     return {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -39,11 +42,11 @@ describe('RolesGuard', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(guard).toBeDefined();
   });
 
-  it('should allow access if no roles are required', () => {
+  it("should allow access if no roles are required", () => {
     mockReflector.get.mockReturnValue(undefined);
     const context = createMockExecutionContext();
 
@@ -52,9 +55,9 @@ describe('RolesGuard', () => {
     expect(result).toBe(true);
   });
 
-  it('should allow access if user has required role', () => {
-    const requiredRoles = ['OWNER', 'ADMIN'];
-    const user = { role: 'OWNER' };
+  it("should allow access if user has required role", () => {
+    const requiredRoles = ["OWNER", "ADMIN"];
+    const user = { role: "OWNER" };
 
     mockReflector.get.mockReturnValue(requiredRoles);
     const context = createMockExecutionContext(user);
@@ -64,9 +67,9 @@ describe('RolesGuard', () => {
     expect(result).toBe(true);
   });
 
-  it('should deny access if user does not have required role', () => {
-    const requiredRoles = ['OWNER', 'ADMIN'];
-    const user = { role: 'EMPLOYEE' };
+  it("should deny access if user does not have required role", () => {
+    const requiredRoles = ["OWNER", "ADMIN"];
+    const user = { role: "EMPLOYEE" };
 
     mockReflector.get.mockReturnValue(requiredRoles);
     const context = createMockExecutionContext(user);
@@ -76,8 +79,8 @@ describe('RolesGuard', () => {
     expect(result).toBe(false);
   });
 
-  it('should deny access if user is missing', () => {
-    const requiredRoles = ['OWNER'];
+  it("should deny access if user is missing", () => {
+    const requiredRoles = ["OWNER"];
 
     mockReflector.get.mockReturnValue(requiredRoles);
     const context = createMockExecutionContext(null);
@@ -87,8 +90,8 @@ describe('RolesGuard', () => {
     expect(result).toBe(false);
   });
 
-  it('should deny access if user has no role', () => {
-    const requiredRoles = ['OWNER'];
+  it("should deny access if user has no role", () => {
+    const requiredRoles = ["OWNER"];
     const user = {};
 
     mockReflector.get.mockReturnValue(requiredRoles);
@@ -99,4 +102,3 @@ describe('RolesGuard', () => {
     expect(result).toBe(false);
   });
 });
-

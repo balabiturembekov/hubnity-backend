@@ -105,7 +105,15 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3001/api",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -126,4 +134,3 @@ networks:
   timetracker-network:
     driver: bridge
     name: timetracker-network
-

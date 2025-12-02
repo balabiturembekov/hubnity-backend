@@ -1,11 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
-import { PrismaService } from '../../prisma/prisma.service';
-import { EventsGateway } from '../events.gateway';
-import { CacheService } from '../../cache/cache.service';
+import { Processor, WorkerHost } from "@nestjs/bullmq";
+import { Logger } from "@nestjs/common";
+import { Job } from "bullmq";
+import { PrismaService } from "../../prisma/prisma.service";
+import { EventsGateway } from "../events.gateway";
+import { CacheService } from "../../cache/cache.service";
 
-@Processor('stats')
+@Processor("stats")
 export class StatsProcessor extends WorkerHost {
   private readonly logger = new Logger(StatsProcessor.name);
 
@@ -24,7 +24,9 @@ export class StatsProcessor extends WorkerHost {
       const companyId = job.data?.companyId;
 
       if (!companyId) {
-        this.logger.warn(`Stats job ${job.id} has no companyId - skipping to prevent data leak`);
+        this.logger.warn(
+          `Stats job ${job.id} has no companyId - skipping to prevent data leak`,
+        );
         return null;
       }
 
@@ -51,13 +53,13 @@ export class StatsProcessor extends WorkerHost {
       const totalSeconds = totalEntries.reduce((acc, entry) => {
         let entrySeconds = 0;
 
-        if (entry.status === 'STOPPED') {
+        if (entry.status === "STOPPED") {
           entrySeconds = entry.duration ?? 0;
-        } else if (entry.status === 'RUNNING') {
+        } else if (entry.status === "RUNNING") {
           try {
             const start = new Date(entry.startTime).getTime();
             const elapsed = Math.floor((now.getTime() - start) / 1000);
-            
+
             // Log warning if elapsed time is negative (possible clock sync issue)
             if (elapsed < 0) {
               this.logger.warn(
@@ -67,19 +69,21 @@ export class StatsProcessor extends WorkerHost {
                   now: now.toISOString(),
                   elapsed,
                 },
-                'Negative elapsed time detected in stats calculation - possible clock synchronization issue',
+                "Negative elapsed time detected in stats calculation - possible clock synchronization issue",
               );
             }
-            
+
             entrySeconds = (entry.duration ?? 0) + Math.max(0, elapsed);
           } catch {
             entrySeconds = entry.duration ?? 0;
           }
-        } else if (entry.status === 'PAUSED') {
+        } else if (entry.status === "PAUSED") {
           entrySeconds = entry.duration ?? 0;
         }
 
-        return acc + (isFinite(entrySeconds) && entrySeconds >= 0 ? entrySeconds : 0);
+        return (
+          acc + (isFinite(entrySeconds) && entrySeconds >= 0 ? entrySeconds : 0)
+        );
       }, 0);
 
       const totalHours = totalSeconds / 3600;
@@ -87,21 +91,21 @@ export class StatsProcessor extends WorkerHost {
       const activeEntries = await this.prisma.timeEntry.findMany({
         where: {
           status: {
-            in: ['RUNNING', 'PAUSED'],
+            in: ["RUNNING", "PAUSED"],
           },
           user: {
             companyId,
           },
         },
         select: { userId: true },
-        distinct: ['userId'],
+        distinct: ["userId"],
       });
 
       const activeUsers = activeEntries.length;
 
       const totalProjects = await this.prisma.project.count({
         where: {
-          status: 'ACTIVE',
+          status: "ACTIVE",
           companyId,
         },
       });
@@ -127,9 +131,9 @@ export class StatsProcessor extends WorkerHost {
       const todaySeconds = todayEntries.reduce((acc, entry) => {
         let entrySeconds = 0;
 
-        if (entry.status === 'STOPPED') {
+        if (entry.status === "STOPPED") {
           entrySeconds = entry.duration ?? 0;
-        } else if (entry.status === 'RUNNING') {
+        } else if (entry.status === "RUNNING") {
           try {
             const start = new Date(entry.startTime).getTime();
             const elapsed = Math.floor((now.getTime() - start) / 1000);
@@ -137,11 +141,13 @@ export class StatsProcessor extends WorkerHost {
           } catch {
             entrySeconds = entry.duration ?? 0;
           }
-        } else if (entry.status === 'PAUSED') {
+        } else if (entry.status === "PAUSED") {
           entrySeconds = entry.duration ?? 0;
         }
 
-        return acc + (isFinite(entrySeconds) && entrySeconds >= 0 ? entrySeconds : 0);
+        return (
+          acc + (isFinite(entrySeconds) && entrySeconds >= 0 ? entrySeconds : 0)
+        );
       }, 0);
 
       const todayHours = todaySeconds / 3600;
@@ -163,4 +169,3 @@ export class StatsProcessor extends WorkerHost {
     }
   }
 }
-

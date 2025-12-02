@@ -1,11 +1,20 @@
-import { IsString, MinLength, MaxLength, IsOptional, IsNumber, Min, IsEnum, Matches } from 'class-validator';
-import { ProjectStatus } from '@prisma/client';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsString,
+  MinLength,
+  MaxLength,
+  IsOptional,
+  IsNumber,
+  Min,
+  IsEnum,
+  Matches,
+} from "class-validator";
+import { ProjectStatus } from "@prisma/client";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateProjectDto {
   @ApiProperty({
-    description: 'Название проекта',
-    example: 'Веб-сайт компании',
+    description: "Название проекта",
+    example: "Веб-сайт компании",
     minLength: 1,
     maxLength: 255,
   })
@@ -15,8 +24,8 @@ export class CreateProjectDto {
   name: string;
 
   @ApiPropertyOptional({
-    description: 'Описание проекта',
-    example: 'Разработка корпоративного веб-сайта',
+    description: "Описание проекта",
+    example: "Разработка корпоративного веб-сайта",
     maxLength: 5000,
   })
   @IsOptional()
@@ -25,18 +34,20 @@ export class CreateProjectDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Цвет проекта в формате HEX',
-    example: '#3b82f6',
-    pattern: '^#[0-9A-Fa-f]{6}$',
-    default: '#3b82f6',
+    description: "Цвет проекта в формате HEX",
+    example: "#3b82f6",
+    pattern: "^#[0-9A-Fa-f]{6}$",
+    default: "#3b82f6",
   })
   @IsOptional()
   @IsString()
-  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Color must be a valid hex color (e.g., #3b82f6)' })
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: "Color must be a valid hex color (e.g., #3b82f6)",
+  })
   color?: string;
 
   @ApiPropertyOptional({
-    description: 'Название клиента',
+    description: "Название клиента",
     example: 'ООО "Клиент"',
     maxLength: 255,
   })
@@ -46,7 +57,7 @@ export class CreateProjectDto {
   clientName?: string;
 
   @ApiPropertyOptional({
-    description: 'Бюджет проекта (в долларах)',
+    description: "Бюджет проекта (в долларах)",
     example: 10000,
     minimum: 0,
     type: Number,
@@ -57,7 +68,7 @@ export class CreateProjectDto {
   budget?: number;
 
   @ApiPropertyOptional({
-    description: 'Статус проекта',
+    description: "Статус проекта",
     enum: ProjectStatus,
     example: ProjectStatus.ACTIVE,
     default: ProjectStatus.ACTIVE,
@@ -66,4 +77,3 @@ export class CreateProjectDto {
   @IsEnum(ProjectStatus)
   status?: ProjectStatus;
 }
-

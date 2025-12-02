@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common';
-import { CompaniesController } from './companies.controller';
-import { CompaniesService } from './companies.service';
-import { PrismaModule } from '../prisma/prisma.module';
-import { EventsModule } from '../events/events.module';
+import { Module } from "@nestjs/common";
+import { CompaniesController } from "./companies.controller";
+import { CompaniesService } from "./companies.service";
+import { PrismaModule } from "../prisma/prisma.module";
+import { EventsModule } from "../events/events.module";
 
 @Module({
   imports: [PrismaModule, EventsModule],
@@ -11,4 +11,3 @@ import { EventsModule } from '../events/events.module';
   exports: [CompaniesService],
 })
 export class CompaniesModule {}
-

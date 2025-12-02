@@ -3,18 +3,18 @@ name: Nightly Build
 on:
   schedule:
     # Run every day at 2 AM UTC
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hubnity_test?schema=public
 
 jobs:
   nightly-tests:
     name: Nightly Full Test Suite
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:16-alpine
@@ -38,7 +38,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -80,7 +80,7 @@ jobs:
   dependency-updates:
     name: Check for Dependency Updates
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -89,7 +89,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -104,4 +104,3 @@ jobs:
         run: |
           echo "🔒 Running security audit..."
           npm audit --audit-level=moderate || true
-

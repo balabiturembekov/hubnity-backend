@@ -1,8 +1,12 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CacheService } from '../cache/cache.service';
-import { CreateProjectDto } from './dto/create-project.dto';
-import { UpdateProjectDto } from './dto/update-project.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { CacheService } from "../cache/cache.service";
+import { CreateProjectDto } from "./dto/create-project.dto";
+import { UpdateProjectDto } from "./dto/update-project.dto";
 
 @Injectable()
 export class ProjectsService {
@@ -15,11 +19,13 @@ export class ProjectsService {
     // Validate and sanitize project name
     const sanitizedName = dto.name.trim();
     if (!sanitizedName || sanitizedName.length < 1) {
-      throw new BadRequestException('Project name cannot be empty');
+      throw new BadRequestException("Project name cannot be empty");
     }
 
     // Sanitize description if provided
-    const sanitizedDescription = dto.description ? dto.description.trim() : undefined;
+    const sanitizedDescription = dto.description
+      ? dto.description.trim()
+      : undefined;
 
     const project = await this.prisma.project.create({
       data: {
@@ -56,7 +62,7 @@ export class ProjectsService {
         createdAt: true,
         updatedAt: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     await this.cache.set(cacheKey, projects, 300);
@@ -72,7 +78,7 @@ export class ProjectsService {
 
     const projects = await this.prisma.project.findMany({
       where: {
-        status: 'ACTIVE',
+        status: "ACTIVE",
         companyId,
       },
       select: {
@@ -87,7 +93,7 @@ export class ProjectsService {
         createdAt: true,
         updatedAt: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     await this.cache.set(cacheKey, projects, 300);
@@ -103,7 +109,9 @@ export class ProjectsService {
     });
 
     if (!project) {
-      throw new NotFoundException(`Project with ID ${id} not found in your company`);
+      throw new NotFoundException(
+        `Project with ID ${id} not found in your company`,
+      );
     }
 
     return project;
@@ -124,7 +132,9 @@ export class ProjectsService {
       });
 
       if (!currentProject) {
-        throw new NotFoundException(`Project with ID ${id} not found in your company`);
+        throw new NotFoundException(
+          `Project with ID ${id} not found in your company`,
+        );
       }
 
       // Validate and sanitize name if provided
@@ -132,14 +142,17 @@ export class ProjectsService {
       if (dto.name) {
         sanitizedName = dto.name.trim();
         if (!sanitizedName || sanitizedName.length < 1) {
-          throw new BadRequestException('Project name cannot be empty');
+          throw new BadRequestException("Project name cannot be empty");
         }
       }
 
       // Sanitize description if provided
-      const sanitizedDescription = dto.description !== undefined 
-        ? (dto.description ? dto.description.trim() : null)
-        : undefined;
+      const sanitizedDescription =
+        dto.description !== undefined
+          ? dto.description
+            ? dto.description.trim()
+            : null
+          : undefined;
 
       const updateData: any = { ...dto };
       if (sanitizedName) {
@@ -150,12 +163,12 @@ export class ProjectsService {
       }
 
       // Check for active time entries if trying to archive
-      if (dto.status === 'ARCHIVED') {
+      if (dto.status === "ARCHIVED") {
         const activeEntries = await tx.timeEntry.findMany({
           where: {
             projectId: id,
             status: {
-              in: ['RUNNING', 'PAUSED'],
+              in: ["RUNNING", "PAUSED"],
             },
             user: {
               companyId,
@@ -165,7 +178,7 @@ export class ProjectsService {
 
         if (activeEntries.length > 0) {
           throw new BadRequestException(
-            `Cannot archive project with active time entries. Please stop all running/paused timers associated with this project first (${activeEntries.length} active timer${activeEntries.length > 1 ? 's' : ''}).`,
+            `Cannot archive project with active time entries. Please stop all running/paused timers associated with this project first (${activeEntries.length} active timer${activeEntries.length > 1 ? "s" : ""}).`,
           );
         }
       }
@@ -196,7 +209,9 @@ export class ProjectsService {
       });
 
       if (!currentProject) {
-        throw new NotFoundException(`Project with ID ${id} not found in your company`);
+        throw new NotFoundException(
+          `Project with ID ${id} not found in your company`,
+        );
       }
 
       // Check for active time entries
@@ -204,7 +219,7 @@ export class ProjectsService {
         where: {
           projectId: id,
           status: {
-            in: ['RUNNING', 'PAUSED'],
+            in: ["RUNNING", "PAUSED"],
           },
           user: {
             companyId,
@@ -214,7 +229,7 @@ export class ProjectsService {
 
       if (activeEntries.length > 0) {
         throw new BadRequestException(
-          `Cannot delete project with active time entries. Please stop all running/paused timers associated with this project first (${activeEntries.length} active timer${activeEntries.length > 1 ? 's' : ''}).`,
+          `Cannot delete project with active time entries. Please stop all running/paused timers associated with this project first (${activeEntries.length} active timer${activeEntries.length > 1 ? "s" : ""}).`,
         );
       }
 
@@ -228,4 +243,3 @@ export class ProjectsService {
     return deleted;
   }
 }
-

@@ -1,9 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsBoolean } from 'class-validator';
+import { ApiProperty } from "@nestjs/swagger";
+import { IsOptional, IsBoolean } from "class-validator";
 
 export class HeartbeatDto {
   @ApiProperty({
-    description: 'Флаг активности пользователя (опционально)',
+    description: "Флаг активности пользователя (опционально)",
     example: true,
     required: false,
   })
@@ -11,4 +11,3 @@ export class HeartbeatDto {
   @IsBoolean()
   isActive?: boolean;
 }
-

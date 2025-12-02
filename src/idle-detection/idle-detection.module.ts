@@ -1,9 +1,9 @@
-import { Module } from '@nestjs/common';
-import { IdleDetectionService } from './idle-detection.service';
-import { IdleDetectionController } from './idle-detection.controller';
-import { PrismaModule } from '../prisma/prisma.module';
-import { EventsModule } from '../events/events.module';
-import { TimeEntriesModule } from '../time-entries/time-entries.module';
+import { Module } from "@nestjs/common";
+import { IdleDetectionService } from "./idle-detection.service";
+import { IdleDetectionController } from "./idle-detection.controller";
+import { PrismaModule } from "../prisma/prisma.module";
+import { EventsModule } from "../events/events.module";
+import { TimeEntriesModule } from "../time-entries/time-entries.module";
 // ScheduleModule уже импортирован глобально в AuthModule, не нужно дублировать
 
 @Module({
@@ -18,4 +18,3 @@ import { TimeEntriesModule } from '../time-entries/time-entries.module';
   exports: [IdleDetectionService],
 })
 export class IdleDetectionModule {}
-

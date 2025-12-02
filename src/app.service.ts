@@ -1,11 +1,10 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from "@nestjs/common";
 
 @Injectable()
 export class AppService implements OnModuleInit {
   onModuleInit() {}
 
   getHello(): string {
-    return 'HubStaff API is running!';
+    return "HubStaff API is running!";
   }
 }
-

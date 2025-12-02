@@ -1,19 +1,25 @@
-import { IsString, IsOptional, IsEnum, IsDateString, MaxLength } from 'class-validator';
-import { EntryStatus } from '@prisma/client';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  MaxLength,
+} from "class-validator";
+import { EntryStatus } from "@prisma/client";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateTimeEntryDto {
   @ApiProperty({
-    description: 'ID пользователя',
-    example: 'uuid',
+    description: "ID пользователя",
+    example: "uuid",
     type: String,
   })
   @IsString()
   userId: string;
 
   @ApiPropertyOptional({
-    description: 'ID проекта (обязателен для сотрудников)',
-    example: 'uuid',
+    description: "ID проекта (обязателен для сотрудников)",
+    example: "uuid",
     type: String,
   })
   @IsOptional()
@@ -21,17 +27,17 @@ export class CreateTimeEntryDto {
   projectId?: string;
 
   @ApiPropertyOptional({
-    description: 'Время начала работы (ISO 8601)',
-    example: '2025-11-30T10:00:00Z',
-    format: 'date-time',
+    description: "Время начала работы (ISO 8601)",
+    example: "2025-11-30T10:00:00Z",
+    format: "date-time",
   })
   @IsOptional()
   @IsDateString()
   startTime?: string;
 
   @ApiPropertyOptional({
-    description: 'Описание выполненной работы',
-    example: 'Разработка функционала авторизации',
+    description: "Описание выполненной работы",
+    example: "Разработка функционала авторизации",
     maxLength: 5000,
   })
   @IsOptional()
@@ -40,7 +46,7 @@ export class CreateTimeEntryDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Статус записи времени',
+    description: "Статус записи времени",
     enum: EntryStatus,
     example: EntryStatus.RUNNING,
     default: EntryStatus.RUNNING,
@@ -49,4 +55,3 @@ export class CreateTimeEntryDto {
   @IsEnum(EntryStatus)
   status?: EntryStatus;
 }
-
