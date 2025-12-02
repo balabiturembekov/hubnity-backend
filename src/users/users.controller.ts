@@ -46,6 +46,7 @@ export class UsersController {
   @ApiResponse({ status: 201, description: "Пользователь успешно создан" })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create(@Body() createUserDto: CreateUserDto, @GetUser() user: any) {
     return this.usersService.create(createUserDto, user.companyId, user.role);
   }
@@ -60,6 +61,7 @@ export class UsersController {
   })
   @ApiResponse({ status: 200, description: "Список пользователей" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findAll(@GetUser() user: any) {
     return this.usersService.findAll(user.companyId);
   }
@@ -71,6 +73,7 @@ export class UsersController {
   })
   @ApiResponse({ status: 200, description: "Информация о пользователе" })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getMyProfile(@GetUser() user: any) {
     return this.usersService.findOne(user.id, user.companyId);
   }
@@ -82,6 +85,9 @@ export class UsersController {
   })
   @ApiResponse({ status: 200, description: "Профиль успешно обновлен" })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 404, description: "Пользователь не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updateMyProfile(@GetUser() user: any, @Body() updateUserDto: UpdateUserDto) {
     if (updateUserDto.role && updateUserDto.role !== user.role) {
       delete updateUserDto.role;
@@ -107,6 +113,7 @@ export class UsersController {
   @ApiResponse({ status: 200, description: "Информация о пользователе" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Пользователь не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findOne(@Param("id") id: string, @GetUser() user: any) {
     if (
       user.role !== UserRole.OWNER &&
@@ -136,6 +143,7 @@ export class UsersController {
   update(
     @Param("id") id: string,
     @Body() updateUserDto: UpdateUserDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
   ) {
     return this.usersService.update(
@@ -163,6 +171,7 @@ export class UsersController {
     description: "Недостаточно прав доступа или попытка удалить свой аккаунт",
   })
   @ApiResponse({ status: 404, description: "Пользователь не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   remove(@Param("id") id: string, @GetUser() user: any) {
     return this.usersService.remove(id, user.companyId, user.role, user.id);
   }

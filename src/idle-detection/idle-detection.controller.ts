@@ -51,6 +51,7 @@ export class IdleDetectionController {
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 404, description: "Пользователь не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async heartbeat(@Body() dto: HeartbeatDto, @GetUser() user: any) {
     // Ошибки уже логируются в сервисе, просто пробрасываем их дальше
     return await this.idleDetectionService.handleHeartbeat(
@@ -84,6 +85,11 @@ export class IdleDetectionController {
     },
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({
+    status: 404,
+    description: "Пользователь не найден или неактивен",
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getStatus(@GetUser() user: any) {
     // Ошибки уже логируются в сервисе, просто пробрасываем их дальше
     return await this.idleDetectionService.getUserActivityStatus(

@@ -120,11 +120,12 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Increase timeout and retry for npm install (fixes network timeout issues)
+# Skip prepare script (husky) in production build
 RUN npm config set fetch-timeout 300000 && \
   npm config set fetch-retries 5 && \
   npm config set fetch-retry-mintimeout 20000 && \
   npm config set fetch-retry-maxtimeout 120000 && \
-  npm ci --omit=dev && \
+  npm ci --omit=dev --ignore-scripts && \
   npm install prisma@^6.18.0 @prisma/client@^6.18.0 && \
   npm cache clean --force
 

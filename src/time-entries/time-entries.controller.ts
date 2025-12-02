@@ -53,6 +53,7 @@ export class TimeEntriesController {
     status: 404,
     description: "Пользователь или проект не найден",
   })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create(@Body() createTimeEntryDto: CreateTimeEntryDto, @GetUser() user: any) {
     if (
       user.role !== UserRole.OWNER &&
@@ -94,6 +95,7 @@ export class TimeEntriesController {
   @ApiResponse({ status: 200, description: "Список записей времени" })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   findAll(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
     @Query("userId") userId?: string,
     @Query("projectId") projectId?: string,
@@ -126,6 +128,7 @@ export class TimeEntriesController {
   })
   @ApiResponse({ status: 200, description: "Список активных записей времени" })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findActive(@GetUser() user: any, @Query("userId") userId?: string) {
     if (
       user.role !== UserRole.OWNER &&
@@ -147,6 +150,7 @@ export class TimeEntriesController {
     description: "Список записей времени пользователя",
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findMyEntries(@GetUser() user: any) {
     return this.timeEntriesService.findAll(user.companyId, user.id);
   }
@@ -172,6 +176,7 @@ export class TimeEntriesController {
   @ApiResponse({ status: 200, description: "История активности" })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   findActivities(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
     @Query("userId") userId?: string,
     @Query("limit") limit?: string,
@@ -209,7 +214,9 @@ export class TimeEntriesController {
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
   @ApiResponse({ status: 200, description: "Информация о записи времени" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findOne(@Param("id") id: string, @GetUser() user: any) {
     return this.timeEntriesService.findOne(id, user.companyId);
   }
@@ -227,6 +234,7 @@ export class TimeEntriesController {
   update(
     @Param("id") id: string,
     @Body() updateTimeEntryDto: UpdateTimeEntryDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
   ) {
     return this.timeEntriesService.update(
@@ -249,6 +257,7 @@ export class TimeEntriesController {
   @ApiResponse({ status: 400, description: "Запись времени уже остановлена" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stop(@Param("id") id: string, @GetUser() user: any) {
     return this.timeEntriesService.stop(id, user.companyId, user.id, user.role);
   }
@@ -266,6 +275,7 @@ export class TimeEntriesController {
   })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pause(@Param("id") id: string, @GetUser() user: any) {
     return this.timeEntriesService.pause(
       id,
@@ -288,6 +298,7 @@ export class TimeEntriesController {
   })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resume(@Param("id") id: string, @GetUser() user: any) {
     return this.timeEntriesService.resume(
       id,
@@ -307,6 +318,7 @@ export class TimeEntriesController {
   @ApiResponse({ status: 204, description: "Запись времени успешно удалена" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   remove(@Param("id") id: string, @GetUser() user: any) {
     return this.timeEntriesService.remove(
       id,

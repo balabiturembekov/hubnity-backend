@@ -65,6 +65,7 @@ export class ScreenshotsController {
   })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async upload(@Body() dto: UploadScreenshotDto, @GetUser() user: any) {
     this.logger.debug(
       {
@@ -84,11 +85,11 @@ export class ScreenshotsController {
       );
       this.logger.info({ screenshotId: result.id }, "Upload successful");
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(
         {
-          error: error.message,
-          stack: error.stack,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
           timeEntryId: dto.timeEntryId,
           userId: user.id,
         },
@@ -135,6 +136,7 @@ export class ScreenshotsController {
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
   async findByTimeEntry(
     @Param("timeEntryId") timeEntryId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
   ) {
     return this.screenshotsService.findByTimeEntry(
@@ -152,8 +154,10 @@ export class ScreenshotsController {
   })
   @ApiParam({ name: "id", description: "ID скриншота", type: String })
   @ApiResponse({ status: 204, description: "Скриншот успешно удален" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Скриншот не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async delete(@Param("id") id: string, @GetUser() user: any) {
     return this.screenshotsService.delete(id, user.companyId, user.id);
   }
