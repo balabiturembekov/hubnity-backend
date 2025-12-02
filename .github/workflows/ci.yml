@@ -32,8 +32,7 @@ jobs:
         run: npm run lint:check || echo "ESLint check completed (warnings allowed)"
 
       - name: Check formatting
-        run: |
-          npm run format -- --check "src/**/*.ts" || exit 1
+        run: npm run format:check || exit 1
 
   type-check:
     name: TypeScript Type Check
