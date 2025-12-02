@@ -97,6 +97,7 @@ export class CompaniesController {
     },
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getScreenshotSettings(@GetUser() user: any) {
     return this.companiesService.getScreenshotSettings(user.companyId);
   }
@@ -124,6 +125,7 @@ export class CompaniesController {
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   async updateScreenshotSettings(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
     @Body() settings: UpdateScreenshotSettingsDto,
   ) {
@@ -154,6 +156,7 @@ export class CompaniesController {
     },
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getIdleDetectionSettings(@GetUser() user: any) {
     return this.companiesService.getIdleDetectionSettings(user.companyId);
   }
@@ -181,6 +184,7 @@ export class CompaniesController {
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   async updateIdleDetectionSettings(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
     @Body() settings: UpdateIdleDetectionSettingsDto,
   ) {
