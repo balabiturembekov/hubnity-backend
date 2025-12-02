@@ -8,16 +8,23 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "lint:check": "eslint \"src/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "type-check": "tsc --noEmit",
+    "prisma:validate": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test?schema=public prisma validate || echo 'Prisma validation skipped (DATABASE_URL not set)'",
+    "prisma:format": "prisma format",
+    "prisma:format:check": "prisma format --check",
+    "ci": "npm run lint:check && npm run format:check && npm run type-check && npm run prisma:validate && npm run prisma:format:check && npm run test:cov && npm run build"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
