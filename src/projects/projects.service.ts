@@ -21,17 +21,60 @@ export class ProjectsService {
     if (!sanitizedName || sanitizedName.length < 1) {
       throw new BadRequestException("Project name cannot be empty");
     }
+    if (sanitizedName.length > 255) {
+      throw new BadRequestException("Project name cannot exceed 255 characters");
+    }
 
     // Sanitize description if provided
     const sanitizedDescription = dto.description
       ? dto.description.trim()
       : undefined;
+    if (
+      sanitizedDescription &&
+      sanitizedDescription.length > 5000
+    ) {
+      throw new BadRequestException(
+        "Description cannot exceed 5000 characters",
+      );
+    }
+
+    // Sanitize clientName if provided
+    const sanitizedClientName = dto.clientName
+      ? dto.clientName.trim()
+      : undefined;
+    if (sanitizedClientName && sanitizedClientName.length > 255) {
+      throw new BadRequestException(
+        "Client name cannot exceed 255 characters",
+      );
+    }
+
+    // Validate color format if provided
+    if (dto.color && !/^#[0-9A-Fa-f]{6}$/.test(dto.color)) {
+      throw new BadRequestException(
+        "Color must be a valid hex color (e.g., #3b82f6)",
+      );
+    }
+
+    // Validate budget if provided
+    if (dto.budget !== undefined) {
+      if (dto.budget < 0) {
+        throw new BadRequestException("Budget cannot be negative");
+      }
+      if (dto.budget > 999999999) {
+        throw new BadRequestException(
+          "Budget cannot exceed $999,999,999",
+        );
+      }
+    }
 
     const project = await this.prisma.project.create({
       data: {
-        ...dto,
         name: sanitizedName,
         description: sanitizedDescription,
+        color: dto.color || "#3b82f6",
+        clientName: sanitizedClientName,
+        budget: dto.budget,
+        status: dto.status || "ACTIVE",
         companyId,
       },
     });
@@ -139,10 +182,15 @@ export class ProjectsService {
 
       // Validate and sanitize name if provided
       let sanitizedName: string | undefined;
-      if (dto.name) {
+      if (dto.name !== undefined) {
         sanitizedName = dto.name.trim();
         if (!sanitizedName || sanitizedName.length < 1) {
           throw new BadRequestException("Project name cannot be empty");
+        }
+        if (sanitizedName.length > 255) {
+          throw new BadRequestException(
+            "Project name cannot exceed 255 characters",
+          );
         }
       }
 
@@ -154,16 +202,66 @@ export class ProjectsService {
             : null
           : undefined;
 
-      const updateData: any = { ...dto };
-      if (sanitizedName) {
+      // Sanitize clientName if provided
+      let sanitizedClientName: string | null | undefined;
+      if (dto.clientName !== undefined) {
+        if (dto.clientName === null || dto.clientName === "") {
+          sanitizedClientName = null;
+        } else {
+          sanitizedClientName = dto.clientName.trim();
+          if (sanitizedClientName.length > 255) {
+            throw new BadRequestException(
+              "Client name cannot exceed 255 characters",
+            );
+          }
+        }
+      }
+
+      // Validate color format if provided
+      if (dto.color !== undefined) {
+        if (dto.color && !/^#[0-9A-Fa-f]{6}$/.test(dto.color)) {
+          throw new BadRequestException(
+            "Color must be a valid hex color (e.g., #3b82f6)",
+          );
+        }
+      }
+
+      // Validate budget if provided
+      if (dto.budget !== undefined) {
+        if (dto.budget !== null) {
+          if (dto.budget < 0) {
+            throw new BadRequestException("Budget cannot be negative");
+          }
+          if (dto.budget > 999999999) {
+            throw new BadRequestException(
+              "Budget cannot exceed $999,999,999",
+            );
+          }
+        }
+      }
+
+      const updateData: any = {};
+      if (sanitizedName !== undefined) {
         updateData.name = sanitizedName;
       }
       if (sanitizedDescription !== undefined) {
         updateData.description = sanitizedDescription;
       }
+      if (sanitizedClientName !== undefined) {
+        updateData.clientName = sanitizedClientName;
+      }
+      if (dto.color !== undefined) {
+        updateData.color = dto.color;
+      }
+      if (dto.budget !== undefined) {
+        updateData.budget = dto.budget;
+      }
+      if (dto.status !== undefined) {
+        updateData.status = dto.status;
+      }
 
       // Check for active time entries if trying to archive
-      if (dto.status === "ARCHIVED") {
+      if (dto.status === "ARCHIVED" && currentProject.status !== "ARCHIVED") {
         const activeEntries = await tx.timeEntry.findMany({
           where: {
             projectId: id,
