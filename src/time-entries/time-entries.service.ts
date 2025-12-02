@@ -198,6 +198,19 @@ export class TimeEntriesService {
     };
 
     if (userId) {
+      // Validate that userId belongs to the same company to prevent data leakage
+      const user = await this.prisma.user.findFirst({
+        where: {
+          id: userId,
+          companyId,
+        },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found in your company`);
+      }
+
       where.userId = userId;
     }
 
@@ -249,6 +262,19 @@ export class TimeEntriesService {
     };
 
     if (userId) {
+      // Validate that userId belongs to the same company to prevent data leakage
+      const user = await this.prisma.user.findFirst({
+        where: {
+          id: userId,
+          companyId,
+        },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found in your company`);
+      }
+
       where.userId = userId;
     }
 
@@ -314,13 +340,8 @@ export class TimeEntriesService {
     updaterId: string,
     updaterRole: UserRole,
   ) {
+    // Initial check for existence (permission check will be done in transaction)
     const entry = await this.findOne(id, companyId);
-
-    if (updaterRole !== UserRole.OWNER && updaterRole !== UserRole.ADMIN && updaterRole !== UserRole.SUPER_ADMIN) {
-      if (entry.userId !== updaterId) {
-        throw new ForbiddenException('You can only update your own time entries');
-      }
-    }
 
     const updateData: any = { ...dto };
 
@@ -413,6 +434,13 @@ export class TimeEntriesService {
 
       if (!currentEntry) {
         throw new NotFoundException(`Time entry with ID ${id} not found`);
+      }
+
+      // Check permissions within transaction to prevent race conditions
+      if (updaterRole !== UserRole.OWNER && updaterRole !== UserRole.ADMIN && updaterRole !== UserRole.SUPER_ADMIN) {
+        if (currentEntry.userId !== updaterId) {
+          throw new ForbiddenException('You can only update your own time entries');
+        }
       }
 
       // Проверяем проект в транзакции для предотвращения race condition
@@ -546,39 +574,6 @@ export class TimeEntriesService {
       throw new BadRequestException('Time entry is already stopped');
     }
 
-    const endTime = new Date();
-    let duration = entry.duration;
-
-    if (entry.status === 'RUNNING') {
-      const start = new Date(entry.startTime).getTime();
-      const end = endTime.getTime();
-      const elapsed = Math.floor((end - start) / 1000);
-      
-      // Log warning if elapsed time is negative (possible clock sync issue)
-      if (elapsed < 0) {
-        this.logger.warn(
-          {
-            entryId: entry.id,
-            userId: entry.userId,
-            startTime: entry.startTime,
-            endTime: endTime.toISOString(),
-            elapsed,
-          },
-          'Negative elapsed time detected in stop() - possible clock synchronization issue',
-        );
-      }
-      
-      const safeElapsed = Math.max(0, elapsed);
-      duration += safeElapsed;
-
-      if (duration < 0) {
-        throw new BadRequestException('Calculated duration cannot be negative. Please check system clock synchronization.');
-      }
-    } else if (entry.status === 'PAUSED') {
-      // Для PAUSED entry используем duration напрямую, но проверим его в транзакции
-      duration = entry.duration;
-    }
-
     const transactionResult = await this.prisma.$transaction(async (tx) => {
       // Verify entry exists and belongs to company within transaction
       const currentEntry = await tx.timeEntry.findFirst({
@@ -599,12 +594,30 @@ export class TimeEntriesService {
         throw new BadRequestException('Time entry is already stopped');
       }
 
+      // Calculate endTime and duration within transaction using current entry data
+      const endTime = new Date();
+      
       // Пересчитываем duration на основе актуального статуса из транзакции
       let finalDuration = currentEntry.duration;
       if (currentEntry.status === 'RUNNING') {
         const start = new Date(currentEntry.startTime).getTime();
         const end = endTime.getTime();
         const elapsed = Math.floor((end - start) / 1000);
+        
+        // Log warning if elapsed time is negative (possible clock sync issue)
+        if (elapsed < 0) {
+          this.logger.warn(
+            {
+              entryId: currentEntry.id,
+              userId: currentEntry.userId,
+              startTime: currentEntry.startTime,
+              endTime: endTime.toISOString(),
+              elapsed,
+            },
+            'Negative elapsed time detected in stop() - possible clock synchronization issue',
+          );
+        }
+        
         const safeElapsed = Math.max(0, elapsed);
         finalDuration = currentEntry.duration + safeElapsed;
       } else if (currentEntry.status === 'PAUSED') {
@@ -715,31 +728,6 @@ export class TimeEntriesService {
       throw new BadRequestException('Only running entries can be paused');
     }
 
-    const now = new Date();
-    const start = new Date(entry.startTime).getTime();
-    const elapsed = Math.floor((now.getTime() - start) / 1000);
-    
-    // Log warning if elapsed time is negative (possible clock sync issue)
-    if (elapsed < 0) {
-      this.logger.warn(
-        {
-          entryId: entry.id,
-          userId: entry.userId,
-          startTime: entry.startTime,
-          now: now.toISOString(),
-          elapsed,
-        },
-        'Negative elapsed time detected in pause() - possible clock synchronization issue',
-      );
-    }
-    
-    const safeElapsed = Math.max(0, elapsed);
-    const newDuration = entry.duration + safeElapsed;
-
-    if (newDuration < 0) {
-      throw new BadRequestException('Calculated duration cannot be negative. Please check system clock synchronization.');
-    }
-
     const transactionResult = await this.prisma.$transaction(async (tx) => {
       // Verify entry exists and belongs to company within transaction
       const currentEntry = await tx.timeEntry.findFirst({
@@ -758,6 +746,32 @@ export class TimeEntriesService {
       // Check status again within transaction
       if (currentEntry.status !== 'RUNNING') {
         throw new BadRequestException('Only running entries can be paused');
+      }
+
+      // Calculate elapsed time within transaction using current entry data
+      const now = new Date();
+      const start = new Date(currentEntry.startTime).getTime();
+      const elapsed = Math.floor((now.getTime() - start) / 1000);
+      
+      // Log warning if elapsed time is negative (possible clock sync issue)
+      if (elapsed < 0) {
+        this.logger.warn(
+          {
+            entryId: currentEntry.id,
+            userId: currentEntry.userId,
+            startTime: currentEntry.startTime,
+            now: now.toISOString(),
+            elapsed,
+          },
+          'Negative elapsed time detected in pause() - possible clock synchronization issue',
+        );
+      }
+      
+      const safeElapsed = Math.max(0, elapsed);
+      const newDuration = currentEntry.duration + safeElapsed;
+
+      if (newDuration < 0) {
+        throw new BadRequestException('Calculated duration cannot be negative. Please check system clock synchronization.');
       }
 
       const updatedEntry = await tx.timeEntry.update({
@@ -1009,6 +1023,19 @@ export class TimeEntriesService {
     };
 
     if (userId) {
+      // Validate that userId belongs to the same company to prevent data leakage
+      const user = await this.prisma.user.findFirst({
+        where: {
+          id: userId,
+          companyId,
+        },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException(`User with ID ${userId} not found in your company`);
+      }
+
       where.userId = userId;
     }
 
