@@ -1,14 +1,13 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
-import { ConfigService } from "@nestjs/config";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
-import { User } from "@prisma/client";
+// User type is not exported from @prisma/client, using any for tests
 
 describe("AuthController", () => {
   let controller: AuthController;
@@ -24,11 +23,8 @@ describe("AuthController", () => {
     logout: jest.fn(),
   };
 
-  const mockConfigService = {
-    get: jest.fn(),
-  };
-
-  const mockUser: User = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockUser: any = {
     id: "user-id",
     name: "John Doe",
     email: "john@example.com",
@@ -50,10 +46,6 @@ describe("AuthController", () => {
         {
           provide: AuthService,
           useValue: mockAuthService,
-        },
-        {
-          provide: ConfigService,
-          useValue: mockConfigService,
         },
       ],
     }).compile();

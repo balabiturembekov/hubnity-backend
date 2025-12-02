@@ -9,7 +9,6 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ConfigService } from "@nestjs/config";
 import {
   ApiTags,
   ApiOperation,
@@ -26,7 +25,6 @@ import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { GetUser } from "./decorators/get-user.decorator";
-import { User } from "@prisma/client";
 
 // Helper to get throttle limit based on environment
 const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
@@ -36,10 +34,7 @@ const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
 @ApiTags("auth")
 @Controller("auth")
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
@@ -236,7 +231,8 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
-  async getProfile(@GetUser() user: User) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getProfile(@GetUser() user: any) {
     return user;
   }
 
@@ -294,7 +290,8 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 401, description: "Неверный текущий пароль" })
-  async changePassword(@GetUser() user: User, @Body() dto: ChangePasswordDto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async changePassword(@GetUser() user: any, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user.id, dto);
   }
 
@@ -396,7 +393,8 @@ export class AuthController {
       "Не авторизован. Убедитесь, что вы используете access token (не refresh token) в заголовке Authorization: Bearer <access_token>",
   })
   async logout(
-    @GetUser() user: User,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @GetUser() user: any,
     @Body() body?: { refreshToken?: string },
   ) {
     return this.authService.logout(user.id, body?.refreshToken);
