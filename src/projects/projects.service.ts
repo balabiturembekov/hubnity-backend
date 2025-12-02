@@ -22,17 +22,16 @@ export class ProjectsService {
       throw new BadRequestException("Project name cannot be empty");
     }
     if (sanitizedName.length > 255) {
-      throw new BadRequestException("Project name cannot exceed 255 characters");
+      throw new BadRequestException(
+        "Project name cannot exceed 255 characters",
+      );
     }
 
     // Sanitize description if provided
     const sanitizedDescription = dto.description
       ? dto.description.trim()
       : undefined;
-    if (
-      sanitizedDescription &&
-      sanitizedDescription.length > 5000
-    ) {
+    if (sanitizedDescription && sanitizedDescription.length > 5000) {
       throw new BadRequestException(
         "Description cannot exceed 5000 characters",
       );
@@ -43,9 +42,7 @@ export class ProjectsService {
       ? dto.clientName.trim()
       : undefined;
     if (sanitizedClientName && sanitizedClientName.length > 255) {
-      throw new BadRequestException(
-        "Client name cannot exceed 255 characters",
-      );
+      throw new BadRequestException("Client name cannot exceed 255 characters");
     }
 
     // Validate color format if provided
@@ -61,9 +58,7 @@ export class ProjectsService {
         throw new BadRequestException("Budget cannot be negative");
       }
       if (dto.budget > 999999999) {
-        throw new BadRequestException(
-          "Budget cannot exceed $999,999,999",
-        );
+        throw new BadRequestException("Budget cannot exceed $999,999,999");
       }
     }
 
@@ -233,13 +228,12 @@ export class ProjectsService {
             throw new BadRequestException("Budget cannot be negative");
           }
           if (dto.budget > 999999999) {
-            throw new BadRequestException(
-              "Budget cannot exceed $999,999,999",
-            );
+            throw new BadRequestException("Budget cannot exceed $999,999,999");
           }
         }
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updateData: any = {};
       if (sanitizedName !== undefined) {
         updateData.name = sanitizedName;

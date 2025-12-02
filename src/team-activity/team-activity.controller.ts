@@ -102,7 +102,11 @@ export class TeamActivityController {
               },
               projectBreakdown: { type: "array" },
               entriesCount: { type: "number", example: 25 },
-              lastActivity: { type: "string", format: "date-time", nullable: true },
+              lastActivity: {
+                type: "string",
+                format: "date-time",
+                nullable: true,
+              },
             },
           },
         },
@@ -117,6 +121,7 @@ export class TeamActivityController {
   @ApiResponse({ status: 400, description: "Неверные параметры запроса" })
   async getTeamActivity(
     @Query() query: TeamActivityQueryDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
   ) {
     return this.teamActivityService.getTeamActivity(
