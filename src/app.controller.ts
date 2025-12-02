@@ -16,8 +16,13 @@ export class AppController {
     status: 200,
     description: "API работает",
     schema: {
-      type: "string",
-      example: "HubStaff API is running!",
+      type: "object",
+      properties: {
+        message: {
+          type: "string",
+          example: "Hubnity API is running!",
+        },
+      },
     },
   })
   getHello(): string {

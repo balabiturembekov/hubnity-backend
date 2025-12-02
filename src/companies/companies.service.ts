@@ -117,7 +117,10 @@ export class CompaniesService {
       }
     }
 
-    const updateData: any = {};
+    const updateData: {
+      idleDetectionEnabled?: boolean;
+      idleThreshold?: number;
+    } = {};
     if (settings.idleDetectionEnabled !== undefined) {
       updateData.idleDetectionEnabled = settings.idleDetectionEnabled;
     }
@@ -127,6 +130,16 @@ export class CompaniesService {
 
     if (Object.keys(updateData).length === 0) {
       return this.getIdleDetectionSettings(companyId);
+    }
+
+    // Check if company exists before updating
+    const existingCompany = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+
+    if (!existingCompany) {
+      throw new NotFoundException("Company not found");
     }
 
     const company = await this.prisma.company.update({
@@ -180,7 +193,10 @@ export class CompaniesService {
       }
     }
 
-    const updateData: any = {};
+    const updateData: {
+      screenshotEnabled?: boolean;
+      screenshotInterval?: number;
+    } = {};
     if (settings.screenshotEnabled !== undefined) {
       updateData.screenshotEnabled = settings.screenshotEnabled;
     }
@@ -190,6 +206,16 @@ export class CompaniesService {
 
     if (Object.keys(updateData).length === 0) {
       return this.getScreenshotSettings(companyId);
+    }
+
+    // Check if company exists before updating
+    const existingCompany = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+
+    if (!existingCompany) {
+      throw new NotFoundException("Company not found");
     }
 
     const company = await this.prisma.company.update({

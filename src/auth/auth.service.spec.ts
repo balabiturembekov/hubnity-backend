@@ -18,9 +18,13 @@ jest.mock("crypto");
 
 describe("AuthService", () => {
   let service: AuthService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let prismaService: PrismaService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let jwtService: JwtService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let configService: ConfigService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let logger: PinoLogger;
 
   const mockPrismaService = {
@@ -147,6 +151,7 @@ describe("AuthService", () => {
     });
 
     it("should successfully register a new user", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { randomBytes } = require("crypto");
       randomBytes.mockReturnValue(Buffer.from("refresh-token-hex", "hex"));
 
@@ -230,6 +235,7 @@ describe("AuthService", () => {
     });
 
     it("should normalize email to lowercase", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { randomBytes } = require("crypto");
       randomBytes.mockReturnValue(Buffer.from("refresh-token-hex", "hex"));
 
@@ -275,6 +281,7 @@ describe("AuthService", () => {
     });
 
     it("should successfully login with valid credentials", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { randomBytes } = require("crypto");
       randomBytes.mockReturnValue(Buffer.from("refresh-token-hex", "hex"));
 
@@ -360,6 +367,7 @@ describe("AuthService", () => {
     });
 
     it("should successfully refresh access token", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { randomBytes } = require("crypto");
       randomBytes.mockReturnValue(Buffer.from("new-refresh-token-hex", "hex"));
 
@@ -573,6 +581,7 @@ describe("AuthService", () => {
     });
 
     it("should successfully create reset token for existing user", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { randomBytes } = require("crypto");
       randomBytes.mockReturnValue(Buffer.from("reset-token-hex", "hex"));
 

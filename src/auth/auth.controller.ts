@@ -6,6 +6,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { ConfigService } from "@nestjs/config";
@@ -362,7 +363,7 @@ export class AuthController {
   @ApiOperation({
     summary: "Выйти из системы",
     description:
-      "Отзывает refresh токен(ы) пользователя. Если передан refreshToken, отзывается только он, иначе отзываются все токены пользователя.",
+      "Отзывает refresh токен(ы) пользователя. **Требует access token в заголовке Authorization: Bearer <access_token>**. Если передан refreshToken в body, отзывается только он, иначе отзываются все токены пользователя.",
   })
   @ApiBody({
     required: false,
@@ -373,6 +374,8 @@ export class AuthController {
           type: "string",
           example: "refresh-token-here",
           nullable: true,
+          description:
+            "Опционально: конкретный refresh token для отзыва (для logout с конкретного устройства). Если не указан, отзываются все refresh tokens пользователя.",
         },
       },
     },
@@ -387,11 +390,64 @@ export class AuthController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({
+    status: 401,
+    description:
+      "Не авторизован. Убедитесь, что вы используете access token (не refresh token) в заголовке Authorization: Bearer <access_token>",
+  })
   async logout(
     @GetUser() user: User,
     @Body() body?: { refreshToken?: string },
   ) {
     return this.authService.logout(user.id, body?.refreshToken);
+  }
+
+  @Post("logout-by-refresh-token")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Выйти из системы используя refresh token",
+    description:
+      "Альтернативный способ logout, который работает только с refresh token (без access token). Отзывает указанный refresh token. Полезно, когда access token истек, но refresh token еще валиден.",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["refreshToken"],
+      properties: {
+        refreshToken: {
+          type: "string",
+          example: "refresh-token-here",
+          description: "Refresh token для отзыва",
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Успешный выход",
+    schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", example: "Logged out successfully" },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Неверные данные запроса (отсутствует refresh token)",
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Неверный или истекший refresh token",
+  })
+  async logoutByRefreshToken(@Body() body: { refreshToken: string }) {
+    if (
+      !body?.refreshToken ||
+      typeof body.refreshToken !== "string" ||
+      body.refreshToken.trim() === ""
+    ) {
+      throw new BadRequestException("Refresh token is required");
+    }
+    return this.authService.logoutByRefreshToken(body.refreshToken);
   }
 }

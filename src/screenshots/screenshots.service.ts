@@ -37,9 +37,12 @@ export class ScreenshotsService {
       await fs.mkdir(this.uploadsDir, { recursive: true });
       await fs.mkdir(this.thumbnailsDir, { recursive: true });
       this.directoriesInitialized = true;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
-        { error: error.message, stack: error.stack },
+        { error: errorMessage, stack: errorStack },
         "Failed to create upload directories",
       );
       throw error;
@@ -49,39 +52,45 @@ export class ScreenshotsService {
   async upload(dto: UploadScreenshotDto, companyId: string, userId: string) {
     await this.ensureDirectoriesExist();
 
-    const timeEntry = await this.prisma.timeEntry.findFirst({
-      where: {
-        id: dto.timeEntryId,
-        user: {
-          companyId,
-        },
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    if (!timeEntry) {
-      throw new NotFoundException("Time entry not found");
-    }
-
-    if (timeEntry.userId !== userId) {
-      const user = await this.prisma.user.findFirst({
+    // Perform all checks within transaction to prevent race conditions
+    await this.prisma.$transaction(async (tx) => {
+      const timeEntry = await tx.timeEntry.findFirst({
         where: {
-          id: userId,
-          companyId,
-          role: {
-            in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
+          id: dto.timeEntryId,
+          user: {
+            companyId,
           },
+        },
+        include: {
+          user: true,
         },
       });
 
-      if (!user) {
-        throw new ForbiddenException(
-          "You can only upload screenshots for your own time entries",
-        );
+      if (!timeEntry) {
+        throw new NotFoundException("Time entry not found");
       }
-    }
+
+      if (timeEntry.userId !== userId) {
+        const user = await tx.user.findFirst({
+          where: {
+            id: userId,
+            companyId,
+            role: {
+              in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
+            },
+            status: "ACTIVE",
+          },
+        });
+
+        if (!user) {
+          throw new ForbiddenException(
+            "You can only upload screenshots for your own time entries",
+          );
+        }
+      }
+
+      return { timeEntry };
+    });
 
     if (!dto.imageData || typeof dto.imageData !== "string") {
       throw new BadRequestException("Invalid image data");
@@ -109,7 +118,7 @@ export class ScreenshotsService {
       let imageBuffer: Buffer;
       try {
         imageBuffer = Buffer.from(base64Data, "base64");
-      } catch (error) {
+      } catch {
         throw new BadRequestException("Failed to decode base64 image data");
       }
 
@@ -151,9 +160,12 @@ export class ScreenshotsService {
             withoutEnlargement: true,
           })
           .toBuffer();
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
         this.logger.error(
-          { error: error.message, stack: error?.stack },
+          { error: errorMessage, stack: errorStack },
           "Error processing image with sharp",
         );
         throw new BadRequestException("Failed to process image");
@@ -172,16 +184,25 @@ export class ScreenshotsService {
           })
           .jpeg({ quality: 80 })
           .toBuffer();
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
         this.logger.error(
-          { error: error.message, stack: error?.stack },
+          { error: errorMessage, stack: errorStack },
           "Error generating thumbnail",
         );
         try {
           await fs.unlink(filepath);
-        } catch (deleteError: any) {
+        } catch (deleteError: unknown) {
+          const deleteErrorMessage =
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError);
+          const deleteErrorStack =
+            deleteError instanceof Error ? deleteError.stack : undefined;
           this.logger.error(
-            { error: deleteError.message, stack: deleteError?.stack },
+            { error: deleteErrorMessage, stack: deleteErrorStack },
             "Failed to cleanup image file after thumbnail error",
           );
         }
@@ -209,11 +230,14 @@ export class ScreenshotsService {
       });
 
       return screenshot;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(
         {
-          error: error.message,
-          stack: error?.stack,
+          error: errorMessage,
+          stack: errorStack,
           timeEntryId: dto.timeEntryId,
           userId,
           companyId,
@@ -229,34 +253,40 @@ export class ScreenshotsService {
     companyId: string,
     userId: string,
   ) {
-    const timeEntry = await this.prisma.timeEntry.findFirst({
-      where: {
-        id: timeEntryId,
-        user: {
-          companyId,
-        },
-      },
-    });
-
-    if (!timeEntry) {
-      throw new NotFoundException("Time entry not found");
-    }
-
-    if (timeEntry.userId !== userId) {
-      const user = await this.prisma.user.findFirst({
+    // Perform all checks within transaction to prevent race conditions
+    await this.prisma.$transaction(async (tx) => {
+      const timeEntry = await tx.timeEntry.findFirst({
         where: {
-          id: userId,
-          companyId,
-          role: {
-            in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
+          id: timeEntryId,
+          user: {
+            companyId,
           },
         },
       });
 
-      if (!user) {
-        throw new ForbiddenException("Access denied");
+      if (!timeEntry) {
+        throw new NotFoundException("Time entry not found");
       }
-    }
+
+      if (timeEntry.userId !== userId) {
+        const user = await tx.user.findFirst({
+          where: {
+            id: userId,
+            companyId,
+            role: {
+              in: ["ADMIN", "OWNER", "SUPER_ADMIN"],
+            },
+            status: "ACTIVE",
+          },
+        });
+
+        if (!user) {
+          throw new ForbiddenException("Access denied");
+        }
+      }
+
+      return { timeEntry };
+    });
 
     return this.prisma.screenshot.findMany({
       where: {
@@ -270,7 +300,7 @@ export class ScreenshotsService {
 
   async delete(screenshotId: string, companyId: string, userId: string) {
     // Perform deletion within transaction to ensure atomicity and verify companyId
-    const result = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       // Verify screenshot exists and belongs to company within transaction
       const screenshot = await tx.screenshot.findUnique({
         where: { id: screenshotId },
@@ -362,11 +392,14 @@ export class ScreenshotsService {
         if (thumbnailPath && fsSync.existsSync(thumbnailPath)) {
           await fs.unlink(thumbnailPath);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
         this.logger.error(
           {
-            error: error.message,
-            stack: error?.stack,
+            error: errorMessage,
+            stack: errorStack,
             screenshotId,
             imageUrl: screenshot.imageUrl,
           },

@@ -24,7 +24,23 @@
     "prisma:validate": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test?schema=public prisma validate || echo 'Prisma validation skipped (DATABASE_URL not set)'",
     "prisma:format": "prisma format",
     "prisma:format:check": "prisma format --check",
-    "ci": "npm run lint:check && npm run format:check && npm run type-check && npm run prisma:validate && npm run prisma:format:check && npm run test:cov && npm run build"
+    "ci": "npm run lint:check && npm run format:check && npm run type-check && npm run prisma:validate && npm run prisma:format:check && npm run test:cov && npm run build",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "prisma/schema.prisma": [
+      "prisma format"
+    ],
+    ".github/**/*.yml": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
@@ -77,7 +93,9 @@
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
+    "husky": "^9.1.7",
     "jest": "^30.0.0",
+    "lint-staged": "^16.2.7",
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",

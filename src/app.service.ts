@@ -5,6 +5,6 @@ export class AppService implements OnModuleInit {
   onModuleInit() {}
 
   getHello(): string {
-    return "HubStaff API is running!";
+    return "Hubnity API is running!";
   }
 }

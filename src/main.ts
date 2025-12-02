@@ -140,9 +140,9 @@ async function bootstrap() {
 
   // Swagger Documentation
   const config = new DocumentBuilder()
-    .setTitle("Time Tracker API")
+    .setTitle("Hubnity API")
     .setDescription(
-      "API для системы учета рабочего времени с автоматическими скриншотами и мониторингом активности команды",
+      "API для системы учета рабочего времени Hubnity с автоматическими скриншотами, детекцией простоя и мониторингом активности команды",
     )
     .setVersion("1.0")
     .addBearerAuth(
@@ -163,6 +163,8 @@ async function bootstrap() {
     .addTag("time-entries", "Учет рабочего времени")
     .addTag("screenshots", "Скриншоты")
     .addTag("team-activity", "Активность команды")
+    .addTag("idle-detection", "Детекция простоя")
+    .addTag("health", "Проверка работоспособности")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

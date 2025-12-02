@@ -132,7 +132,7 @@ export class AuthService implements OnModuleInit {
     if (dto.companyDomain && dto.companyDomain.trim() !== "") {
       const trimmedDomain = dto.companyDomain.trim().toLowerCase();
       const domainRegex =
-        /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+        /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
       if (!domainRegex.test(trimmedDomain)) {
         throw new BadRequestException(
           "Invalid domain format. Domain must be a valid domain name (e.g., example.com)",
@@ -750,6 +750,59 @@ export class AuthService implements OnModuleInit {
     );
 
     return { message: "Password has been reset successfully" };
+  }
+
+  /**
+   * Logout by refresh token (without access token)
+   * Useful when access token expired but refresh token is still valid
+   */
+  async logoutByRefreshToken(refreshToken: string) {
+    // Validate input
+    if (
+      !refreshToken ||
+      typeof refreshToken !== "string" ||
+      refreshToken.trim() === ""
+    ) {
+      throw new UnauthorizedException("Refresh token is required");
+    }
+
+    // Find refresh token to get userId
+    const refreshTokenRecord = await this.prisma.refreshToken.findUnique({
+      where: { token: refreshToken },
+      select: {
+        userId: true,
+        revokedAt: true,
+        expiresAt: true,
+        user: {
+          select: {
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!refreshTokenRecord) {
+      throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    if (refreshTokenRecord.revokedAt) {
+      throw new UnauthorizedException("Refresh token has already been revoked");
+    }
+
+    if (refreshTokenRecord.expiresAt < new Date()) {
+      throw new UnauthorizedException("Refresh token has expired");
+    }
+
+    // Check user status
+    if (
+      !refreshTokenRecord.user ||
+      refreshTokenRecord.user.status !== "ACTIVE"
+    ) {
+      throw new UnauthorizedException("User account is inactive");
+    }
+
+    // Revoke the refresh token
+    return this.logout(refreshTokenRecord.userId, refreshToken);
   }
 
   /**
