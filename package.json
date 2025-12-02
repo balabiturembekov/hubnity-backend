@@ -25,7 +25,7 @@
     "prisma:format": "prisma format",
     "prisma:format:check": "prisma format --check",
     "ci": "npm run lint:check && npm run format:check && npm run type-check && npm run prisma:validate && npm run prisma:format:check && npm run test:cov && npm run build",
-    "prepare": "husky"
+    "prepare": "node -e \"if(process.env.CI !== 'true' && process.env.SKIP_HUSKY !== '1'){require('husky').install()}\" || true"
   },
   "lint-staged": {
     "src/**/*.ts": [
