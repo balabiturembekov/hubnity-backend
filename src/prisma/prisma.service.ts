@@ -7,6 +7,9 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  // Explicitly declare PrismaClient methods to help TypeScript
+  declare $transaction: PrismaClient["$transaction"];
+
   constructor(configService?: ConfigService) {
     super({
       datasources: {
