@@ -1,6 +1,6 @@
 # Multi-stage build for NestJS backend
 # Using node:20-slim instead of alpine to avoid musl issues with Prisma binaries
-FROM node:20-slim AS builder
+FROM node:25-slim AS builder
 
 # Install curl and dnsutils for testing CDN connectivity
 RUN apt-get update && \
@@ -106,7 +106,7 @@ RUN echo "🔍 Verifying Prisma Client before build..." && \
 RUN npm run build
 
 # Production stage
-FROM node:20-slim
+FROM node:25-slim
 
 WORKDIR /app
 
