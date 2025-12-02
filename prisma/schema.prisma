@@ -12,13 +12,15 @@ datasource db {
 }
 
 model Company {
-  id                 String   @id @default(uuid())
-  name               String
-  domain             String?  @unique
-  screenshotEnabled  Boolean  @default(false)
-  screenshotInterval Int      @default(60) // in seconds: 30, 60, 300, 600
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  name                 String
+  domain               String?  @unique
+  screenshotEnabled    Boolean  @default(false)
+  screenshotInterval   Int      @default(60) // in seconds: 30, 60, 300, 600
+  idleThreshold        Int      @default(300) // in seconds: время простоя до автоматической паузы (default 5 minutes)
+  idleDetectionEnabled Boolean  @default(true) // включена ли детекция простоя
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   users    User[]
   projects Project[]
@@ -45,6 +47,7 @@ model User {
   activities          Activity[]
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  userActivity        UserActivity?
 
   @@unique([email, companyId])
   @@index([companyId])
@@ -159,6 +162,22 @@ model PasswordResetToken {
   @@index([email])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+model UserActivity {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  lastHeartbeat DateTime @default(now())
+  isIdle        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([lastHeartbeat])
+  @@index([isIdle])
+  @@map("user_activities")
 }
 
 enum UserRole {

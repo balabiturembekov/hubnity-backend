@@ -27,6 +27,8 @@ export class CompaniesService {
       select: {
         screenshotEnabled: true,
         screenshotInterval: true,
+        idleDetectionEnabled: true,
+        idleThreshold: true,
       },
     });
 
@@ -37,10 +39,86 @@ export class CompaniesService {
     const settings = {
       screenshotEnabled: company.screenshotEnabled,
       screenshotInterval: company.screenshotInterval,
+      idleDetectionEnabled: company.idleDetectionEnabled,
+      idleThreshold: company.idleThreshold,
     };
 
     await this.cache.set(cacheKey, settings, 600);
     return settings;
+  }
+
+  async getIdleDetectionSettings(companyId: string) {
+    if (!companyId || typeof companyId !== 'string' || companyId.trim() === '') {
+      throw new NotFoundException('Invalid company ID');
+    }
+
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        idleDetectionEnabled: true,
+        idleThreshold: true,
+      },
+    });
+
+    if (!company) {
+      throw new NotFoundException('Company not found');
+    }
+
+    return {
+      idleDetectionEnabled: company.idleDetectionEnabled,
+      idleThreshold: company.idleThreshold,
+    };
+  }
+
+  async updateIdleDetectionSettings(
+    companyId: string,
+    settings: { idleDetectionEnabled?: boolean; idleThreshold?: number },
+  ) {
+    if (settings.idleDetectionEnabled !== undefined && typeof settings.idleDetectionEnabled !== 'boolean') {
+      throw new ForbiddenException('idleDetectionEnabled must be a boolean value');
+    }
+
+    if (settings.idleThreshold !== undefined) {
+      if (typeof settings.idleThreshold !== 'number' || !Number.isInteger(settings.idleThreshold) || isNaN(settings.idleThreshold)) {
+        throw new ForbiddenException('idleThreshold must be an integer');
+      }
+
+      if (settings.idleThreshold < 60) {
+        throw new ForbiddenException('idleThreshold must be at least 60 seconds (1 minute)');
+      }
+
+      if (settings.idleThreshold > 3600) {
+        throw new ForbiddenException('idleThreshold cannot exceed 3600 seconds (1 hour)');
+      }
+    }
+
+    const updateData: any = {};
+    if (settings.idleDetectionEnabled !== undefined) {
+      updateData.idleDetectionEnabled = settings.idleDetectionEnabled;
+    }
+    if (settings.idleThreshold !== undefined) {
+      updateData.idleThreshold = settings.idleThreshold;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return this.getIdleDetectionSettings(companyId);
+    }
+
+    const company = await this.prisma.company.update({
+      where: { id: companyId },
+      data: updateData,
+      select: {
+        idleDetectionEnabled: true,
+        idleThreshold: true,
+      },
+    });
+
+    await this.cache.invalidateCompanySettings(companyId);
+
+    return {
+      idleDetectionEnabled: company.idleDetectionEnabled,
+      idleThreshold: company.idleThreshold,
+    };
   }
 
   async updateScreenshotSettings(companyId: string, settings: { screenshotEnabled?: boolean; screenshotInterval?: number }) {

@@ -243,5 +243,39 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     }
   }
+
+  broadcastIdleDetection(data: any, companyId?: string) {
+    if (companyId) {
+      // Отправляем уведомление конкретному пользователю
+      if (data.userId) {
+        this.server.to(`user:${data.userId}`).emit('idle:detected', {
+          ...data,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      // Также отправляем в компанию для админов
+      this.server.to(`company:${companyId}`).emit('idle:detected', {
+        ...data,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      const extractedCompanyId = data?.companyId;
+      if (extractedCompanyId) {
+        this.logger.warn(`broadcastIdleDetection called without companyId, extracted from data: ${extractedCompanyId}`);
+        if (data.userId) {
+          this.server.to(`user:${data.userId}`).emit('idle:detected', {
+            ...data,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        this.server.to(`company:${extractedCompanyId}`).emit('idle:detected', {
+          ...data,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        this.logger.error(`broadcastIdleDetection called without companyId and cannot extract from data. Not broadcasting.`);
+      }
+    }
+  }
 }
 

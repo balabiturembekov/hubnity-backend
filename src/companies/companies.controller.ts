@@ -7,7 +7,7 @@ import {
   ApiBody,
   ApiPropertyOptional,
 } from '@nestjs/swagger';
-import { IsOptional, IsBoolean, IsNumber, IsIn } from 'class-validator';
+import { IsOptional, IsBoolean, IsNumber, IsIn, Min, Max } from 'class-validator';
 import { CompaniesService } from './companies.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -35,6 +35,30 @@ class UpdateScreenshotSettingsDto {
   @IsNumber()
   @IsIn([30, 60, 300, 600])
   screenshotInterval?: number;
+}
+
+class UpdateIdleDetectionSettingsDto {
+  @ApiPropertyOptional({
+    description: 'Включить/выключить детекцию простоя',
+    example: true,
+    type: Boolean,
+  })
+  @IsOptional()
+  @IsBoolean()
+  idleDetectionEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Порог простоя в секундах (минимум 60, максимум 3600). Время бездействия до автоматической паузы',
+    example: 300,
+    type: Number,
+    minimum: 60,
+    maximum: 3600,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(60, { message: 'idleThreshold must be at least 60 seconds (1 minute)' })
+  @Max(3600, { message: 'idleThreshold cannot exceed 3600 seconds (1 hour)' })
+  idleThreshold?: number;
 }
 
 @ApiTags('companies')
@@ -87,5 +111,50 @@ export class CompaniesController {
   @ApiResponse({ status: 403, description: 'Недостаточно прав доступа' })
   async updateScreenshotSettings(@GetUser() user: any, @Body() settings: UpdateScreenshotSettingsDto) {
     return this.companiesService.updateScreenshotSettings(user.companyId, settings);
+  }
+
+  @Get('idle-detection-settings')
+  @ApiOperation({ 
+    summary: 'Получить настройки детекции простоя компании',
+    description: 'Возвращает настройки детекции простоя для компании',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Настройки детекции простоя',
+    schema: {
+      type: 'object',
+      properties: {
+        idleDetectionEnabled: { type: 'boolean', example: true },
+        idleThreshold: { type: 'number', example: 300, description: 'Порог простоя в секундах' },
+      },
+    },
+  })
+  async getIdleDetectionSettings(@GetUser() user: any) {
+    return this.companiesService.getIdleDetectionSettings(user.companyId);
+  }
+
+  @Patch('idle-detection-settings')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiOperation({ 
+    summary: 'Обновить настройки детекции простоя компании',
+    description: 'Обновляет настройки детекции простоя. Доступно только для OWNER и ADMIN.',
+  })
+  @ApiBody({ type: UpdateIdleDetectionSettingsDto })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Настройки успешно обновлены',
+    schema: {
+      type: 'object',
+      properties: {
+        idleDetectionEnabled: { type: 'boolean', example: true },
+        idleThreshold: { type: 'number', example: 300 },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Неверные данные запроса' })
+  @ApiResponse({ status: 403, description: 'Недостаточно прав доступа' })
+  async updateIdleDetectionSettings(@GetUser() user: any, @Body() settings: UpdateIdleDetectionSettingsDto) {
+    return this.companiesService.updateIdleDetectionSettings(user.companyId, settings);
   }
 }

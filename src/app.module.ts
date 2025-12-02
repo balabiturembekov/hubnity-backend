@@ -16,6 +16,7 @@ import { ScreenshotsModule } from './screenshots/screenshots.module';
 import { TeamActivityModule } from './team-activity/team-activity.module';
 import { CompaniesModule } from './companies/companies.module';
 import { CacheModule } from './cache/cache.module';
+import { IdleDetectionModule } from './idle-detection/idle-detection.module';
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { CacheModule } from './cache/cache.module';
     ScreenshotsModule,
     TeamActivityModule,
     CompaniesModule,
+    IdleDetectionModule,
   ],
   controllers: [AppController],
   providers: [
