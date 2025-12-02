@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from "@nestjs/common";
 import { PinoLogger } from "nestjs-pino";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -38,7 +43,17 @@ export class TeamActivityService {
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
 
-        if (start >= end) {
+        // Validate date range (max 10 years)
+        const maxRangeDays = 365 * 10;
+        const rangeDays =
+          (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+        if (rangeDays > maxRangeDays) {
+          this.logger.warn(
+            { startDate, endDate, rangeDays },
+            "Date range exceeds maximum (10 years), falling back to default period",
+          );
+          period = ActivityPeriod.LAST_30_DAYS;
+        } else if (start >= end) {
           this.logger.warn(
             { startDate, endDate },
             "Start date must be before end date, falling back to default period",
@@ -206,30 +221,79 @@ export class TeamActivityService {
     userRole: string,
     query: TeamActivityQueryDto,
   ) {
+    // Validate UUID format for companyId and userId
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(companyId)) {
+      throw new BadRequestException("Invalid company ID format");
+    }
+    if (!uuidRegex.test(userId)) {
+      throw new BadRequestException("Invalid user ID format");
+    }
+
+    // Validate UUID format for query parameters
+    if (query.userId && !uuidRegex.test(query.userId)) {
+      throw new BadRequestException("Invalid userId format in query");
+    }
+    if (query.projectId && !uuidRegex.test(query.projectId)) {
+      throw new BadRequestException("Invalid projectId format in query");
+    }
+
+    // Check company existence
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+    if (!company) {
+      throw new NotFoundException("Company not found");
+    }
+
     const { start, end } = this.getDateRange(
       query.period || ActivityPeriod.LAST_30_DAYS,
       query.startDate,
       query.endDate,
     );
     const isEmployee = userRole === "EMPLOYEE";
+
+    // Employees can only query their own data
+    if (isEmployee && query.userId && query.userId !== userId) {
+      throw new ForbiddenException(
+        "Employees can only view their own activity data",
+      );
+    }
+
     const effectiveUserId = isEmployee ? userId : query.userId || undefined;
 
-    const where: any = {
+    const where: {
+      companyId: string;
+      status: "ACTIVE";
+      id?: string;
+    } = {
       companyId,
       status: "ACTIVE",
     };
 
     if (effectiveUserId) {
+      // Validate UUID format
+      if (!uuidRegex.test(effectiveUserId)) {
+        throw new BadRequestException("Invalid effectiveUserId format");
+      }
+
       const userCheck = await this.prisma.user.findFirst({
         where: {
           id: effectiveUserId,
           companyId,
+          status: "ACTIVE",
+        },
+        select: {
+          id: true,
+          status: true,
         },
       });
 
       if (!userCheck) {
         throw new NotFoundException(
-          `User with ID ${effectiveUserId} not found in your company`,
+          `User with ID ${effectiveUserId} not found in your company or is inactive`,
         );
       }
 
@@ -262,7 +326,13 @@ export class TeamActivityService {
       };
     }
 
-    const timeEntriesWhere: any = {
+    const timeEntriesWhere: {
+      user: { companyId: string };
+      status: "STOPPED";
+      startTime: { gte: Date; lte: Date };
+      userId?: string;
+      projectId?: string;
+    } = {
       user: {
         companyId,
       },
@@ -278,10 +348,18 @@ export class TeamActivityService {
     }
 
     if (query.projectId) {
+      // Validate UUID format
+      if (!uuidRegex.test(query.projectId)) {
+        throw new BadRequestException("Invalid projectId format");
+      }
+
       const projectCheck = await this.prisma.project.findFirst({
         where: {
           id: query.projectId,
           companyId,
+        },
+        select: {
+          id: true,
         },
       });
 
@@ -294,6 +372,7 @@ export class TeamActivityService {
       timeEntriesWhere.projectId = query.projectId;
     }
 
+    // Limit time entries query to prevent memory issues (max 10000 entries)
     const timeEntries = await this.prisma.timeEntry.findMany({
       where: timeEntriesWhere,
       select: {
@@ -323,9 +402,31 @@ export class TeamActivityService {
       orderBy: {
         startTime: "desc",
       },
+      take: 10000, // Limit to prevent memory issues
     });
 
-    const membersMap = new Map<string, any>();
+    type MemberData = {
+      userId: string;
+      userName: string;
+      userEmail: string;
+      userAvatar: string | null;
+      userRole: string;
+      hourlyRate: number | null;
+      totalHours: number;
+      totalEarned: number;
+      activityLevel: "low" | "medium" | "high";
+      projectBreakdown: Array<{
+        projectId: string | null;
+        projectName: string;
+        projectColor: string;
+        hours: number;
+        earned: number;
+      }>;
+      entriesCount: number;
+      lastActivity: Date | null;
+    };
+
+    const membersMap = new Map<string, MemberData>();
 
     users.forEach((user) => {
       membersMap.set(user.id, {
@@ -338,7 +439,7 @@ export class TeamActivityService {
         totalHours: 0,
         totalEarned: 0,
         activityLevel: "low" as "low" | "medium" | "high",
-        projectBreakdown: [] as any[],
+        projectBreakdown: [],
         entriesCount: 0,
         lastActivity: null as Date | null,
       });
@@ -372,11 +473,13 @@ export class TeamActivityService {
       }
 
       const hourlyRate = member.hourlyRate ?? 0;
-      if (!isFinite(hourlyRate) || hourlyRate < 0) {
+      if (!isFinite(hourlyRate) || hourlyRate < 0 || hourlyRate > 1000000) {
         this.logger.warn(
           { userId: member.userId, hourlyRate },
-          "Invalid hourlyRate, using 0",
+          "Invalid hourlyRate, skipping entry",
         );
+        // Skip entry if hourlyRate is invalid (too high or negative)
+        return;
       }
 
       const earned = hours * hourlyRate;
@@ -401,7 +504,7 @@ export class TeamActivityService {
           if (!isNaN(startTimeDate.getTime())) {
             member.lastActivity = startTimeDate;
           }
-        } catch (error) {
+        } catch {
           this.logger.warn(
             { entryId: entry.id, startTime: entry.startTime },
             "Invalid startTime format",
@@ -414,12 +517,18 @@ export class TeamActivityService {
         projectMap.set(member.userId, new Map());
       }
 
-      const userProjectMap = projectMap.get(member.userId)!;
+      const userProjectMap = projectMap.get(member.userId);
+      if (!userProjectMap) {
+        return;
+      }
       if (!userProjectMap.has(projectKey)) {
         userProjectMap.set(projectKey, { hours: 0, earned: 0 });
       }
 
-      const projectStats = userProjectMap.get(projectKey)!;
+      const projectStats = userProjectMap.get(projectKey);
+      if (!projectStats) {
+        return;
+      }
       projectStats.hours += hours;
       projectStats.earned += earned;
     });
@@ -468,7 +577,6 @@ export class TeamActivityService {
       .map((m) => m.totalHours)
       .filter((h) => isFinite(h) && h >= 0);
 
-    const maxHours = allHours.length > 0 ? Math.max(...allHours, 0) : 0;
     const avgHours =
       allHours.length > 0
         ? allHours.reduce((a, b) => a + b, 0) / allHours.length
