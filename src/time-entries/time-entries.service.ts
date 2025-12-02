@@ -43,22 +43,7 @@ export class TimeEntriesService {
       throw new BadRequestException('Project is required for employees. Please select a project before starting the timer.');
     }
 
-    if (dto.projectId) {
-      const project = await this.prisma.project.findFirst({
-        where: {
-          id: dto.projectId,
-          companyId,
-        },
-      });
-
-      if (!project) {
-        throw new NotFoundException(`Project with ID ${dto.projectId} not found in your company`);
-      }
-
-      if (project.status === 'ARCHIVED') {
-        throw new BadRequestException('Cannot create time entry for archived project');
-      }
-    }
+    // Проверка проекта будет выполнена в транзакции для предотвращения race condition
 
     const startTime = dto.startTime ? new Date(dto.startTime) : new Date();
     const maxFutureTime = new Date();
@@ -68,6 +53,24 @@ export class TimeEntriesService {
     }
 
     const transactionResult = await this.prisma.$transaction(async (tx) => {
+      // Проверяем проект в транзакции для предотвращения race condition
+      if (dto.projectId) {
+        const project = await tx.project.findFirst({
+          where: {
+            id: dto.projectId,
+            companyId,
+          },
+        });
+
+        if (!project) {
+          throw new NotFoundException(`Project with ID ${dto.projectId} not found in your company`);
+        }
+
+        if (project.status === 'ARCHIVED') {
+          throw new BadRequestException('Cannot create time entry for archived project');
+        }
+      }
+
       const activeEntryCheck = await tx.timeEntry.findFirst({
         where: {
           userId: dto.userId,
@@ -129,27 +132,56 @@ export class TimeEntriesService {
 
     await this.cache.invalidateStats(companyId);
 
-    if (entry.user && entry.user.name) {
-      this.eventsGateway.broadcastActivity(
-        {
-          id: activityId,
+    // Обрабатываем ошибки broadcast (не критично, но логируем)
+    try {
+      if (entry.user && entry.user.name) {
+        this.eventsGateway.broadcastActivity(
+          {
+            id: activityId,
+            userId: entry.userId,
+            userName: entry.user.name,
+            userAvatar: entry.user.avatar ?? undefined,
+            type: 'START',
+            projectId: entry.projectId ?? undefined,
+            timestamp: activityTimestamp.toISOString(),
+          },
+          companyId,
+        );
+      } else {
+        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
+          entryId: entry.id,
           userId: entry.userId,
-          userName: entry.user.name,
-          userAvatar: entry.user.avatar ?? undefined,
-          type: 'START',
-          projectId: entry.projectId ?? undefined,
-          timestamp: activityTimestamp.toISOString(),
-        },
-        companyId,
+        });
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        { activityId, entryId: entry.id, error: error.message },
+        'Failed to broadcast activity',
       );
-    } else {
-      this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-        entryId: entry.id,
-        userId: entry.userId,
-      });
     }
 
-    this.eventsGateway.broadcastTimeEntryUpdate(entry, companyId);
+    try {
+      this.eventsGateway.broadcastTimeEntryUpdate(entry, companyId);
+    } catch (error: any) {
+      this.logger.warn(
+        { entryId: entry.id, error: error.message },
+        'Failed to broadcast time entry update',
+      );
+    }
+
+    // Сбрасываем isIdle в false при создании нового time entry
+    try {
+      await this.prisma.userActivity.updateMany({
+        where: { userId: entry.userId },
+        data: { isIdle: false },
+      });
+    } catch (error: any) {
+      // Если не удалось обновить isIdle, логируем, но не критично
+      this.logger.warn(
+        { userId: entry.userId, error: error.message },
+        'Failed to reset isIdle when creating time entry',
+      );
+    }
 
     setTimeout(() => {
       this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-created' }, companyId);
@@ -292,41 +324,7 @@ export class TimeEntriesService {
 
     const updateData: any = { ...dto };
 
-    if (dto.projectId !== undefined) {
-      if (dto.projectId === null || dto.projectId === '') {
-        // CRITICAL: For employees, project cannot be removed
-        const entryUser = await this.prisma.user.findFirst({
-          where: {
-            id: entry.userId,
-            companyId,
-          },
-          select: {
-            role: true,
-          },
-        });
-
-        if (entryUser?.role === UserRole.EMPLOYEE) {
-          throw new BadRequestException('Project is required for employees. Cannot remove project from time entry.');
-        }
-
-        updateData.projectId = null;
-      } else {
-        const project = await this.prisma.project.findFirst({
-          where: {
-            id: dto.projectId,
-            companyId,
-          },
-        });
-
-        if (!project) {
-          throw new NotFoundException(`Project with ID ${dto.projectId} not found in your company`);
-        }
-
-        if (project.status === 'ARCHIVED') {
-          throw new BadRequestException('Cannot assign time entry to archived project');
-        }
-      }
-    }
+    // Проверка проекта будет выполнена в транзакции для предотвращения race condition
 
     if (dto.endTime) {
       updateData.endTime = new Date(dto.endTime);
@@ -417,6 +415,43 @@ export class TimeEntriesService {
         throw new NotFoundException(`Time entry with ID ${id} not found`);
       }
 
+      // Проверяем проект в транзакции для предотвращения race condition
+      if (dto.projectId !== undefined) {
+        if (dto.projectId === null || dto.projectId === '') {
+          // CRITICAL: For employees, project cannot be removed
+          const entryUser = await tx.user.findFirst({
+            where: {
+              id: currentEntry.userId,
+              companyId,
+            },
+            select: {
+              role: true,
+            },
+          });
+
+          if (entryUser?.role === UserRole.EMPLOYEE) {
+            throw new BadRequestException('Project is required for employees. Cannot remove project from time entry.');
+          }
+
+          updateData.projectId = null;
+        } else {
+          const project = await tx.project.findFirst({
+            where: {
+              id: dto.projectId,
+              companyId,
+            },
+          });
+
+          if (!project) {
+            throw new NotFoundException(`Project with ID ${dto.projectId} not found in your company`);
+          }
+
+          if (project.status === 'ARCHIVED') {
+            throw new BadRequestException('Cannot assign time entry to archived project');
+          }
+        }
+      }
+
       // Check for active entries if trying to set status to RUNNING
       // This check happens within the transaction AFTER reading current entry to prevent race conditions
       if (dto.status === 'RUNNING' && currentEntry.status !== 'RUNNING') {
@@ -464,7 +499,32 @@ export class TimeEntriesService {
     });
 
     await this.cache.invalidateStats(companyId);
-    this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+
+    // Сбрасываем isIdle в false только если статус действительно RUNNING
+    if (updated.status === 'RUNNING') {
+      try {
+        await this.prisma.userActivity.updateMany({
+          where: { userId: updated.userId },
+          data: { isIdle: false },
+        });
+      } catch (error: any) {
+        // Если не удалось обновить isIdle, логируем, но не критично
+        this.logger.warn(
+          { userId: updated.userId, error: error.message },
+          'Failed to reset isIdle when resuming time entry',
+        );
+      }
+    }
+
+    // Обрабатываем ошибки broadcast (не критично, но логируем)
+    try {
+      this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    } catch (error: any) {
+      this.logger.warn(
+        { entryId: updated.id, error: error.message },
+        'Failed to broadcast time entry update',
+      );
+    }
 
     setTimeout(() => {
       this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
@@ -515,10 +575,8 @@ export class TimeEntriesService {
         throw new BadRequestException('Calculated duration cannot be negative. Please check system clock synchronization.');
       }
     } else if (entry.status === 'PAUSED') {
+      // Для PAUSED entry используем duration напрямую, но проверим его в транзакции
       duration = entry.duration;
-      if (duration < 0) {
-        throw new BadRequestException('Duration cannot be negative. Please check time entry data.');
-      }
     }
 
     const transactionResult = await this.prisma.$transaction(async (tx) => {
@@ -541,11 +599,27 @@ export class TimeEntriesService {
         throw new BadRequestException('Time entry is already stopped');
       }
 
+      // Пересчитываем duration на основе актуального статуса из транзакции
+      let finalDuration = currentEntry.duration;
+      if (currentEntry.status === 'RUNNING') {
+        const start = new Date(currentEntry.startTime).getTime();
+        const end = endTime.getTime();
+        const elapsed = Math.floor((end - start) / 1000);
+        const safeElapsed = Math.max(0, elapsed);
+        finalDuration = currentEntry.duration + safeElapsed;
+      } else if (currentEntry.status === 'PAUSED') {
+        finalDuration = currentEntry.duration;
+      }
+
+      if (finalDuration < 0) {
+        throw new BadRequestException('Duration cannot be negative. Please check time entry data.');
+      }
+
       const updatedEntry = await tx.timeEntry.update({
         where: { id },
         data: {
           endTime,
-          duration,
+          duration: finalDuration,
           status: 'STOPPED',
         },
         include: {
@@ -584,27 +658,42 @@ export class TimeEntriesService {
 
     await this.cache.invalidateStats(companyId);
 
-    if (updated.user && updated.user.name) {
-      this.eventsGateway.broadcastActivity(
-        {
-          id: activityId,
+    // Обрабатываем ошибки broadcast (не критично, но логируем)
+    try {
+      if (updated.user && updated.user.name) {
+        this.eventsGateway.broadcastActivity(
+          {
+            id: activityId,
+            userId: updated.userId,
+            userName: updated.user.name,
+            userAvatar: updated.user.avatar ?? undefined,
+            type: 'STOP',
+            projectId: updated.projectId ?? undefined,
+            timestamp: activityTimestamp.toISOString(),
+          },
+          companyId,
+        );
+      } else {
+        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
+          entryId: updated.id,
           userId: updated.userId,
-          userName: updated.user.name,
-          userAvatar: updated.user.avatar ?? undefined,
-          type: 'STOP',
-          projectId: updated.projectId ?? undefined,
-          timestamp: activityTimestamp.toISOString(),
-        },
-        companyId,
+        });
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        { activityId, entryId: updated.id, error: error.message },
+        'Failed to broadcast activity',
       );
-    } else {
-      this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-        entryId: updated.id,
-        userId: updated.userId,
-      });
     }
 
-    this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    try {
+      this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    } catch (error: any) {
+      this.logger.warn(
+        { entryId: updated.id, error: error.message },
+        'Failed to broadcast time entry update',
+      );
+    }
 
     setTimeout(() => {
       this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
@@ -714,27 +803,42 @@ export class TimeEntriesService {
 
     await this.cache.invalidateStats(companyId);
 
-    if (updated.user && updated.user.name) {
-      this.eventsGateway.broadcastActivity(
-        {
-          id: activityId,
+    // Обрабатываем ошибки broadcast (не критично, но логируем)
+    try {
+      if (updated.user && updated.user.name) {
+        this.eventsGateway.broadcastActivity(
+          {
+            id: activityId,
+            userId: updated.userId,
+            userName: updated.user.name,
+            userAvatar: updated.user.avatar ?? undefined,
+            type: 'PAUSE',
+            projectId: updated.projectId ?? undefined,
+            timestamp: activityTimestamp.toISOString(),
+          },
+          companyId,
+        );
+      } else {
+        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
+          entryId: updated.id,
           userId: updated.userId,
-          userName: updated.user.name,
-          userAvatar: updated.user.avatar ?? undefined,
-          type: 'PAUSE',
-          projectId: updated.projectId ?? undefined,
-          timestamp: activityTimestamp.toISOString(),
-        },
-        companyId,
+        });
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        { activityId, entryId: updated.id, error: error.message },
+        'Failed to broadcast activity',
       );
-    } else {
-      this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-        entryId: updated.id,
-        userId: updated.userId,
-      });
     }
 
-    this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    try {
+      this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    } catch (error: any) {
+      this.logger.warn(
+        { entryId: updated.id, error: error.message },
+        'Failed to broadcast time entry update',
+      );
+    }
 
     setTimeout(() => {
       this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
@@ -821,8 +925,8 @@ export class TimeEntriesService {
 
       const activity = await tx.activity.create({
         data: {
-          userId: entry.userId,
-          projectId: entry.projectId,
+          userId: updatedEntry.userId,
+          projectId: updatedEntry.projectId,
           type: 'RESUME',
         },
       });
@@ -836,27 +940,56 @@ export class TimeEntriesService {
 
     await this.cache.invalidateStats(companyId);
 
-    if (updated.user && updated.user.name) {
-      this.eventsGateway.broadcastActivity(
-        {
-          id: activityId,
+    // Обрабатываем ошибки broadcast (не критично, но логируем)
+    try {
+      if (updated.user && updated.user.name) {
+        this.eventsGateway.broadcastActivity(
+          {
+            id: activityId,
+            userId: updated.userId,
+            userName: updated.user.name,
+            userAvatar: updated.user.avatar ?? undefined,
+            type: 'RESUME',
+            projectId: updated.projectId ?? undefined,
+            timestamp: activityTimestamp.toISOString(),
+          },
+          companyId,
+        );
+      } else {
+        this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
+          entryId: updated.id,
           userId: updated.userId,
-          userName: updated.user.name,
-          userAvatar: updated.user.avatar ?? undefined,
-          type: 'RESUME',
-          projectId: updated.projectId ?? undefined,
-          timestamp: activityTimestamp.toISOString(),
-        },
-        companyId,
+        });
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        { activityId, entryId: updated.id, error: error.message },
+        'Failed to broadcast activity',
       );
-    } else {
-      this.logger.error(`Failed to broadcast activity ${activityId}: user data missing`, {
-        entryId: updated.id,
-        userId: updated.userId,
-      });
     }
 
-    this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    try {
+      this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    } catch (error: any) {
+      this.logger.warn(
+        { entryId: updated.id, error: error.message },
+        'Failed to broadcast time entry update',
+      );
+    }
+
+    // Сбрасываем isIdle в false при возобновлении time entry
+    try {
+      await this.prisma.userActivity.updateMany({
+        where: { userId: updated.userId },
+        data: { isIdle: false },
+      });
+    } catch (error: any) {
+      // Если не удалось обновить isIdle, логируем, но не критично
+      this.logger.warn(
+        { userId: updated.userId, error: error.message },
+        'Failed to reset isIdle when resuming time entry',
+      );
+    }
 
     setTimeout(() => {
       this.eventsGateway.broadcastStatsUpdate({ trigger: 'time-entry-updated' }, companyId);
