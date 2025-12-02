@@ -2,7 +2,6 @@ import {
   WebSocketGateway,
   WebSocketServer,
   SubscribeMessage,
-  ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from "@nestjs/websockets";
@@ -11,6 +10,8 @@ import { Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
+
+const corsLogger = new Logger("EventsGatewayCORS");
 
 @WebSocketGateway({
   cors: {
@@ -63,18 +64,27 @@ import { PrismaService } from "../prisma/prisma.service";
 
       const allowedOrigins = getAllowedOrigins();
 
-      // Allow requests with no origin
+      // Allow requests with no origin only in development
       if (!origin) {
-        console.log("WebSocket CORS: Allowing connection with no origin");
+        if (process.env.NODE_ENV === "production") {
+          corsLogger.warn(
+            "WebSocket CORS: Blocking connection with no origin in production",
+          );
+          callback(new Error("Origin is required in production"));
+          return;
+        }
+        corsLogger.debug("WebSocket CORS: Allowing connection with no origin");
         return callback(null, true);
       }
 
       if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-        console.log(`WebSocket CORS: Allowing origin: ${origin}`);
+        corsLogger.debug(`WebSocket CORS: Allowing origin: ${origin}`);
         callback(null, true);
       } else {
-        console.warn(`WebSocket CORS: Blocked origin: ${origin}`);
-        console.warn(`WebSocket CORS: Allowed origins are:`, allowedOrigins);
+        corsLogger.warn(`WebSocket CORS: Blocked origin: ${origin}`);
+        corsLogger.debug(
+          `WebSocket CORS: Allowed origins are: ${allowedOrigins.join(", ")}`,
+        );
         callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
       }
     },
@@ -111,19 +121,69 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         secret: this.configService.get("JWT_SECRET") || "secret",
       });
 
+      // Validate UUID format for payload.sub
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!payload.sub || !uuidRegex.test(payload.sub)) {
+        this.logger.error(
+          `Invalid user ID format in token for client ${client.id}`,
+        );
+        client.disconnect();
+        return;
+      }
+
       let companyId = payload.companyId;
 
       if (!companyId) {
         const user = await this.prisma.user.findUnique({
           where: { id: payload.sub },
-          select: { companyId: true },
+          select: {
+            companyId: true,
+            status: true,
+          },
         });
 
         if (!user) {
-          throw new Error("User not found");
+          this.logger.error(
+            `User not found for client ${client.id}, userId: ${payload.sub}`,
+          );
+          client.disconnect();
+          return;
+        }
+
+        // Check user status
+        if (user.status !== "ACTIVE") {
+          this.logger.warn(
+            `Inactive user tried to connect: ${payload.sub}, status: ${user.status}`,
+          );
+          client.disconnect();
+          return;
         }
 
         companyId = user.companyId;
+      }
+
+      // Validate UUID format for companyId
+      if (!companyId || !uuidRegex.test(companyId)) {
+        this.logger.error(
+          `Invalid company ID format for client ${client.id}, companyId: ${companyId}`,
+        );
+        client.disconnect();
+        return;
+      }
+
+      // Check company existence
+      const company = await this.prisma.company.findUnique({
+        where: { id: companyId },
+        select: { id: true },
+      });
+
+      if (!company) {
+        this.logger.error(
+          `Company not found for client ${client.id}, companyId: ${companyId}`,
+        );
+        client.disconnect();
+        return;
       }
 
       client.data.userId = payload.sub;
@@ -143,9 +203,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         userId: payload.sub,
         timestamp: new Date().toISOString(),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       this.logger.error(
-        `Authentication error for client ${client.id}: ${error.message}`,
+        `Authentication error for client ${client.id}: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
       );
       client.disconnect();
     }
@@ -169,52 +232,91 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage("ping")
-  handlePing(@ConnectedSocket() client: Socket) {
+  handlePing() {
     return { event: "pong", data: { timestamp: new Date().toISOString() } };
   }
 
-  broadcastStatsUpdate(stats: any, companyId?: string) {
-    if (companyId) {
-      this.server.to(`company:${companyId}`).emit("stats:update", {
-        ...stats,
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      const extractedCompanyId = stats?.companyId;
-      if (extractedCompanyId) {
-        this.logger.warn(
-          `broadcastStatsUpdate called without companyId, extracted from stats: ${extractedCompanyId}`,
+  broadcastStatsUpdate(stats: unknown, companyId?: string) {
+    try {
+      // Validate UUID format for companyId
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (companyId && !uuidRegex.test(companyId)) {
+        this.logger.error(
+          `Invalid companyId format in broadcastStatsUpdate: ${companyId}`,
         );
-        this.server.to(`company:${extractedCompanyId}`).emit("stats:update", {
-          ...stats,
+        return;
+      }
+
+      if (companyId) {
+        this.server.to(`company:${companyId}`).emit("stats:update", {
+          ...(stats as Record<string, unknown>),
           timestamp: new Date().toISOString(),
         });
       } else {
-        this.logger.error(
-          `broadcastStatsUpdate called without companyId and cannot extract from stats. Not broadcasting.`,
-        );
+        const statsObj = stats as { companyId?: string } | null | undefined;
+        const extractedCompanyId = statsObj?.companyId;
+        if (extractedCompanyId && uuidRegex.test(extractedCompanyId)) {
+          this.logger.warn(
+            `broadcastStatsUpdate called without companyId, extracted from stats: ${extractedCompanyId}`,
+          );
+          this.server.to(`company:${extractedCompanyId}`).emit("stats:update", {
+            ...(stats as Record<string, unknown>),
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          this.logger.error(
+            `broadcastStatsUpdate called without companyId and cannot extract from stats. Not broadcasting.`,
+          );
+        }
       }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error(
+        `Error broadcasting stats update: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 
-  broadcastActivity(activity: any, companyId?: string) {
+  broadcastActivity(activity: unknown, companyId?: string) {
     try {
+      // Validate UUID format for companyId
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (companyId && !uuidRegex.test(companyId)) {
+        this.logger.error(
+          `Invalid companyId format in broadcastActivity: ${companyId}`,
+        );
+        return;
+      }
+
+      const activityObj = activity as
+        | {
+            timestamp?: string;
+            companyId?: string;
+            user?: { companyId?: string };
+          }
+        | null
+        | undefined;
+
       if (companyId) {
-        const timestamp = activity.timestamp || new Date().toISOString();
+        const timestamp = activityObj?.timestamp || new Date().toISOString();
         this.server.to(`company:${companyId}`).emit("activity:new", {
-          ...activity,
+          ...(activity as Record<string, unknown>),
           timestamp,
         });
       } else {
         const extractedCompanyId =
-          activity?.companyId || activity?.user?.companyId;
-        if (extractedCompanyId) {
+          activityObj?.companyId || activityObj?.user?.companyId;
+        if (extractedCompanyId && uuidRegex.test(extractedCompanyId)) {
           this.logger.warn(
             `broadcastActivity called without companyId, extracted from activity: ${extractedCompanyId}`,
           );
-          const timestamp = activity.timestamp || new Date().toISOString();
+          const timestamp = activityObj?.timestamp || new Date().toISOString();
           this.server.to(`company:${extractedCompanyId}`).emit("activity:new", {
-            ...activity,
+            ...(activity as Record<string, unknown>),
             timestamp,
           });
         } else {
@@ -223,108 +325,204 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           );
         }
       }
-    } catch (error: any) {
-      this.logger.error(`Error broadcasting activity: ${error.message}`, error);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error(
+        `Error broadcasting activity: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 
-  broadcastTimeEntryUpdate(timeEntry: any, companyId?: string) {
-    if (companyId) {
-      this.server.to(`company:${companyId}`).emit("time-entry:update", {
-        ...timeEntry,
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      const extractedCompanyId =
-        timeEntry?.user?.companyId || timeEntry?.companyId;
-      if (extractedCompanyId) {
-        this.logger.warn(
-          `broadcastTimeEntryUpdate called without companyId, extracted from timeEntry: ${extractedCompanyId}`,
-        );
-        this.server
-          .to(`company:${extractedCompanyId}`)
-          .emit("time-entry:update", {
-            ...timeEntry,
-            timestamp: new Date().toISOString(),
-          });
-      } else {
+  broadcastTimeEntryUpdate(timeEntry: unknown, companyId?: string) {
+    try {
+      // Validate UUID format for companyId
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (companyId && !uuidRegex.test(companyId)) {
         this.logger.error(
-          `broadcastTimeEntryUpdate called without companyId and cannot extract from timeEntry. Not broadcasting.`,
+          `Invalid companyId format in broadcastTimeEntryUpdate: ${companyId}`,
         );
+        return;
       }
-    }
-  }
 
-  notifyUser(userId: string, event: string, data: any) {
-    this.server.to(`user:${userId}`).emit(event, {
-      ...data,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  broadcastScreenshotSettingsUpdate(settings: any, companyId?: string) {
-    if (companyId) {
-      this.server
-        .to(`company:${companyId}`)
-        .emit("screenshot-settings:update", {
-          ...settings,
+      if (companyId) {
+        this.server.to(`company:${companyId}`).emit("time-entry:update", {
+          ...(timeEntry as Record<string, unknown>),
           timestamp: new Date().toISOString(),
         });
-    } else {
-      const extractedCompanyId = settings?.companyId;
-      if (extractedCompanyId) {
-        this.logger.warn(
-          `broadcastScreenshotSettingsUpdate called without companyId, extracted from settings: ${extractedCompanyId}`,
+      } else {
+        const entryObj = timeEntry as
+          | { user?: { companyId?: string }; companyId?: string }
+          | null
+          | undefined;
+        const extractedCompanyId =
+          entryObj?.user?.companyId || entryObj?.companyId;
+        if (extractedCompanyId && uuidRegex.test(extractedCompanyId)) {
+          this.logger.warn(
+            `broadcastTimeEntryUpdate called without companyId, extracted from timeEntry: ${extractedCompanyId}`,
+          );
+          this.server
+            .to(`company:${extractedCompanyId}`)
+            .emit("time-entry:update", {
+              ...(timeEntry as Record<string, unknown>),
+              timestamp: new Date().toISOString(),
+            });
+        } else {
+          this.logger.error(
+            `broadcastTimeEntryUpdate called without companyId and cannot extract from timeEntry. Not broadcasting.`,
+          );
+        }
+      }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error(
+        `Error broadcasting time entry update: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  notifyUser(userId: string, event: string, data: unknown) {
+    // Validate UUID format for userId
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!userId || !uuidRegex.test(userId)) {
+      this.logger.error(
+        `Invalid userId format in notifyUser: ${userId}, event: ${event}`,
+      );
+      return;
+    }
+
+    try {
+      this.server.to(`user:${userId}`).emit(event, {
+        ...(data as Record<string, unknown>),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error(
+        `Error notifying user ${userId} with event ${event}: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
+  }
+
+  broadcastScreenshotSettingsUpdate(settings: unknown, companyId?: string) {
+    try {
+      // Validate UUID format for companyId
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (companyId && !uuidRegex.test(companyId)) {
+        this.logger.error(
+          `Invalid companyId format in broadcastScreenshotSettingsUpdate: ${companyId}`,
         );
+        return;
+      }
+
+      if (companyId) {
         this.server
-          .to(`company:${extractedCompanyId}`)
+          .to(`company:${companyId}`)
           .emit("screenshot-settings:update", {
-            ...settings,
+            ...(settings as Record<string, unknown>),
             timestamp: new Date().toISOString(),
           });
       } else {
-        this.logger.error(
-          `broadcastScreenshotSettingsUpdate called without companyId and cannot extract from settings. Not broadcasting.`,
-        );
+        const settingsObj = settings as
+          | { companyId?: string }
+          | null
+          | undefined;
+        const extractedCompanyId = settingsObj?.companyId;
+        if (extractedCompanyId && uuidRegex.test(extractedCompanyId)) {
+          this.logger.warn(
+            `broadcastScreenshotSettingsUpdate called without companyId, extracted from settings: ${extractedCompanyId}`,
+          );
+          this.server
+            .to(`company:${extractedCompanyId}`)
+            .emit("screenshot-settings:update", {
+              ...(settings as Record<string, unknown>),
+              timestamp: new Date().toISOString(),
+            });
+        } else {
+          this.logger.error(
+            `broadcastScreenshotSettingsUpdate called without companyId and cannot extract from settings. Not broadcasting.`,
+          );
+        }
       }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error(
+        `Error broadcasting screenshot settings update: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 
-  broadcastIdleDetection(data: any, companyId?: string) {
-    if (companyId) {
-      // Отправляем уведомление конкретному пользователю
-      if (data.userId) {
-        this.server.to(`user:${data.userId}`).emit("idle:detected", {
-          ...data,
-          timestamp: new Date().toISOString(),
-        });
-      }
-      // Также отправляем в компанию для админов
-      this.server.to(`company:${companyId}`).emit("idle:detected", {
-        ...data,
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      const extractedCompanyId = data?.companyId;
-      if (extractedCompanyId) {
-        this.logger.warn(
-          `broadcastIdleDetection called without companyId, extracted from data: ${extractedCompanyId}`,
+  broadcastIdleDetection(data: unknown, companyId?: string) {
+    try {
+      // Validate UUID format for companyId
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (companyId && !uuidRegex.test(companyId)) {
+        this.logger.error(
+          `Invalid companyId format in broadcastIdleDetection: ${companyId}`,
         );
-        if (data.userId) {
-          this.server.to(`user:${data.userId}`).emit("idle:detected", {
-            ...data,
+        return;
+      }
+
+      const dataObj = data as
+        | { userId?: string; companyId?: string }
+        | null
+        | undefined;
+
+      if (companyId) {
+        // Отправляем уведомление конкретному пользователю
+        if (dataObj?.userId && uuidRegex.test(dataObj.userId)) {
+          this.server.to(`user:${dataObj.userId}`).emit("idle:detected", {
+            ...(data as Record<string, unknown>),
             timestamp: new Date().toISOString(),
           });
         }
-        this.server.to(`company:${extractedCompanyId}`).emit("idle:detected", {
-          ...data,
+        // Также отправляем в компанию для админов
+        this.server.to(`company:${companyId}`).emit("idle:detected", {
+          ...(data as Record<string, unknown>),
           timestamp: new Date().toISOString(),
         });
       } else {
-        this.logger.error(
-          `broadcastIdleDetection called without companyId and cannot extract from data. Not broadcasting.`,
-        );
+        const extractedCompanyId = dataObj?.companyId;
+        if (extractedCompanyId && uuidRegex.test(extractedCompanyId)) {
+          this.logger.warn(
+            `broadcastIdleDetection called without companyId, extracted from data: ${extractedCompanyId}`,
+          );
+          if (dataObj?.userId && uuidRegex.test(dataObj.userId)) {
+            this.server.to(`user:${dataObj.userId}`).emit("idle:detected", {
+              ...(data as Record<string, unknown>),
+              timestamp: new Date().toISOString(),
+            });
+          }
+          this.server
+            .to(`company:${extractedCompanyId}`)
+            .emit("idle:detected", {
+              ...(data as Record<string, unknown>),
+              timestamp: new Date().toISOString(),
+            });
+        } else {
+          this.logger.error(
+            `broadcastIdleDetection called without companyId and cannot extract from data. Not broadcasting.`,
+          );
+        }
       }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      this.logger.error(
+        `Error broadcasting idle detection: ${errorMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 }
