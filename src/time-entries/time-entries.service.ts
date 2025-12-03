@@ -25,8 +25,8 @@ export class TimeEntriesService {
   async create(
     dto: CreateTimeEntryDto,
     companyId: string,
-    creatorId: string,
-    creatorRole: UserRole,
+    _creatorId: string,
+    _creatorRole: UserRole,
   ) {
     const user = await this.prisma.user.findFirst({
       where: {
@@ -179,18 +179,22 @@ export class TimeEntriesService {
           },
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        { activityId, entryId: entry.id, error: error.message },
+        { activityId, entryId: entry.id, error: errorMessage },
         "Failed to broadcast activity",
       );
     }
 
     try {
       this.eventsGateway.broadcastTimeEntryUpdate(entry, companyId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        { entryId: entry.id, error: error.message },
+        { entryId: entry.id, error: errorMessage },
         "Failed to broadcast time entry update",
       );
     }
@@ -201,10 +205,12 @@ export class TimeEntriesService {
         where: { userId: entry.userId },
         data: { isIdle: false },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Если не удалось обновить isIdle, логируем, но не критично
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { userId: entry.userId, error: error.message },
+        { userId: entry.userId, error: errorMessage },
         "Failed to reset isIdle when creating time entry",
       );
     }
@@ -220,7 +226,11 @@ export class TimeEntriesService {
   }
 
   async findAll(companyId: string, userId?: string, projectId?: string) {
-    const where: any = {
+    const where: {
+      user: { companyId: string };
+      userId?: string;
+      projectId?: string;
+    } = {
       user: {
         companyId,
       },
@@ -285,6 +295,7 @@ export class TimeEntriesService {
   }
 
   async findActive(companyId: string, userId?: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
       status: {
         in: ["RUNNING", "PAUSED"],
@@ -375,17 +386,7 @@ export class TimeEntriesService {
     updaterId: string,
     updaterRole: UserRole,
   ) {
-    // Initial check for existence (permission check will be done in transaction)
-    const entry = await this.findOne(id, companyId);
-
-    const updateData: any = { ...dto };
-
-    // Проверка проекта будет выполнена в транзакции для предотвращения race condition
-
-    if (dto.endTime) {
-      updateData.endTime = new Date(dto.endTime);
-    }
-
+    // Validate input data before transaction
     if (dto.startTime) {
       const newStartTime = new Date(dto.startTime);
       const maxFutureTime = new Date();
@@ -395,85 +396,16 @@ export class TimeEntriesService {
           "Start time cannot be more than 1 hour in the future",
         );
       }
-      updateData.startTime = newStartTime;
     }
 
-    const finalStartTime = updateData.startTime
-      ? new Date(updateData.startTime)
-      : new Date(entry.startTime);
-    const finalEndTime = updateData.endTime
-      ? new Date(updateData.endTime)
-      : null;
-
-    if (finalEndTime && finalEndTime <= finalStartTime) {
-      throw new BadRequestException("End time must be after start time");
-    }
-
-    if (dto.endTime && entry.status === "RUNNING") {
-      const start = finalStartTime.getTime();
-      const end = finalEndTime!.getTime();
-      const calculatedDuration =
-        Math.floor((end - start) / 1000) + entry.duration;
-
-      if (calculatedDuration < 0) {
+    if (dto.duration !== undefined) {
+      if (dto.duration < 0) {
+        throw new BadRequestException("Duration cannot be negative");
+      }
+      if (dto.duration > 2147483647) {
         throw new BadRequestException(
-          "Calculated duration cannot be negative. Please check startTime and endTime values.",
+          "Duration exceeds maximum allowed value (68+ years)",
         );
-      }
-
-      updateData.duration = calculatedDuration;
-      updateData.status = "STOPPED";
-    }
-
-    if (dto.status === "STOPPED" && entry.status !== "STOPPED") {
-      if (!dto.endTime) {
-        updateData.endTime = new Date();
-      }
-
-      if (!dto.duration) {
-        const end = updateData.endTime
-          ? new Date(updateData.endTime).getTime()
-          : new Date().getTime();
-
-        if (entry.status === "RUNNING") {
-          const currentSessionStart = new Date(entry.startTime).getTime();
-          const currentSessionSeconds = Math.floor(
-            (end - currentSessionStart) / 1000,
-          );
-          updateData.duration = (entry.duration || 0) + currentSessionSeconds;
-        } else if (entry.status === "PAUSED") {
-          updateData.duration = entry.duration || 0;
-        } else {
-          const start = finalStartTime.getTime();
-          updateData.duration = Math.floor((end - start) / 1000);
-        }
-
-        if (updateData.duration < 0) {
-          throw new BadRequestException(
-            "Duration cannot be negative. Please check startTime and endTime values.",
-          );
-        }
-        if (updateData.duration > 2147483647) {
-          throw new BadRequestException(
-            "Duration exceeds maximum allowed value (68+ years). Please check startTime and endTime values.",
-          );
-        }
-      } else {
-        if (dto.duration < 0) {
-          throw new BadRequestException("Duration cannot be negative");
-        }
-        if (dto.duration > 2147483647) {
-          throw new BadRequestException(
-            "Duration exceeds maximum allowed value (68+ years)",
-          );
-        }
-      }
-
-      const finalEndTimeCheck = updateData.endTime
-        ? new Date(updateData.endTime)
-        : new Date();
-      if (finalEndTimeCheck <= finalStartTime) {
-        throw new BadRequestException("End time must be after start time");
       }
     }
 
@@ -502,6 +434,94 @@ export class TimeEntriesService {
           throw new ForbiddenException(
             "You can only update your own time entries",
           );
+        }
+      }
+
+      // Build update data using current entry data from transaction
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updateData: any = { ...dto };
+
+      if (dto.endTime) {
+        updateData.endTime = new Date(dto.endTime);
+      }
+
+      if (dto.startTime) {
+        updateData.startTime = new Date(dto.startTime);
+      }
+
+      const finalStartTime = updateData.startTime
+        ? new Date(updateData.startTime)
+        : new Date(currentEntry.startTime);
+      const finalEndTime = updateData.endTime
+        ? new Date(updateData.endTime)
+        : null;
+
+      if (finalEndTime && finalEndTime <= finalStartTime) {
+        throw new BadRequestException("End time must be after start time");
+      }
+
+      // Calculate duration based on current entry status (from transaction)
+      if (dto.endTime && currentEntry.status === "RUNNING") {
+        const start = finalStartTime.getTime();
+        const end = finalEndTime
+          ? finalEndTime.getTime()
+          : new Date().getTime();
+        const calculatedDuration =
+          Math.floor((end - start) / 1000) + currentEntry.duration;
+
+        if (calculatedDuration < 0) {
+          throw new BadRequestException(
+            "Calculated duration cannot be negative. Please check startTime and endTime values.",
+          );
+        }
+
+        updateData.duration = calculatedDuration;
+        updateData.status = "STOPPED";
+      }
+
+      if (dto.status === "STOPPED" && currentEntry.status !== "STOPPED") {
+        if (!dto.endTime) {
+          updateData.endTime = new Date();
+        }
+
+        if (!dto.duration) {
+          const end = updateData.endTime
+            ? new Date(updateData.endTime).getTime()
+            : new Date().getTime();
+
+          if (currentEntry.status === "RUNNING") {
+            const currentSessionStart = new Date(
+              currentEntry.startTime,
+            ).getTime();
+            const currentSessionSeconds = Math.floor(
+              (end - currentSessionStart) / 1000,
+            );
+            updateData.duration =
+              (currentEntry.duration || 0) + currentSessionSeconds;
+          } else if (currentEntry.status === "PAUSED") {
+            updateData.duration = currentEntry.duration || 0;
+          } else {
+            const start = finalStartTime.getTime();
+            updateData.duration = Math.floor((end - start) / 1000);
+          }
+
+          if (updateData.duration < 0) {
+            throw new BadRequestException(
+              "Duration cannot be negative. Please check startTime and endTime values.",
+            );
+          }
+          if (updateData.duration > 2147483647) {
+            throw new BadRequestException(
+              "Duration exceeds maximum allowed value (68+ years). Please check startTime and endTime values.",
+            );
+          }
+        }
+
+        const finalEndTimeCheck = updateData.endTime
+          ? new Date(updateData.endTime)
+          : new Date();
+        if (finalEndTimeCheck <= finalStartTime) {
+          throw new BadRequestException("End time must be after start time");
         }
       }
 
@@ -605,10 +625,12 @@ export class TimeEntriesService {
           where: { userId: updated.userId },
           data: { isIdle: false },
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Если не удалось обновить isIdle, логируем, но не критично
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const errorMessage = (error as any)?.message || String(error);
         this.logger.warn(
-          { userId: updated.userId, error: error.message },
+          { userId: updated.userId, error: errorMessage },
           "Failed to reset isIdle when resuming time entry",
         );
       }
@@ -617,9 +639,11 @@ export class TimeEntriesService {
     // Обрабатываем ошибки broadcast (не критично, но логируем)
     try {
       this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { entryId: updated.id, error: error.message },
+        { entryId: updated.id, error: errorMessage },
         "Failed to broadcast time entry update",
       );
     }
@@ -640,22 +664,6 @@ export class TimeEntriesService {
     stopperId: string,
     stopperRole: UserRole,
   ) {
-    const entry = await this.findOne(id, companyId);
-
-    if (
-      stopperRole !== UserRole.OWNER &&
-      stopperRole !== UserRole.ADMIN &&
-      stopperRole !== UserRole.SUPER_ADMIN
-    ) {
-      if (entry.userId !== stopperId) {
-        throw new ForbiddenException("You can only stop your own time entries");
-      }
-    }
-
-    if (entry.status === "STOPPED") {
-      throw new BadRequestException("Time entry is already stopped");
-    }
-
     const transactionResult = await this.prisma.$transaction(async (tx) => {
       // Verify entry exists and belongs to company within transaction
       const currentEntry = await tx.timeEntry.findFirst({
@@ -669,6 +677,19 @@ export class TimeEntriesService {
 
       if (!currentEntry) {
         throw new NotFoundException(`Time entry with ID ${id} not found`);
+      }
+
+      // Check permissions within transaction to prevent race conditions
+      if (
+        stopperRole !== UserRole.OWNER &&
+        stopperRole !== UserRole.ADMIN &&
+        stopperRole !== UserRole.SUPER_ADMIN
+      ) {
+        if (currentEntry.userId !== stopperId) {
+          throw new ForbiddenException(
+            "You can only stop your own time entries",
+          );
+        }
       }
 
       // Check status again within transaction
@@ -783,18 +804,22 @@ export class TimeEntriesService {
           },
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { activityId, entryId: updated.id, error: error.message },
+        { activityId, entryId: updated.id, error: errorMessage },
         "Failed to broadcast activity",
       );
     }
 
     try {
       this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { entryId: updated.id, error: error.message },
+        { entryId: updated.id, error: errorMessage },
         "Failed to broadcast time entry update",
       );
     }
@@ -815,24 +840,6 @@ export class TimeEntriesService {
     pauserId: string,
     pauserRole: UserRole,
   ) {
-    const entry = await this.findOne(id, companyId);
-
-    if (
-      pauserRole !== UserRole.OWNER &&
-      pauserRole !== UserRole.ADMIN &&
-      pauserRole !== UserRole.SUPER_ADMIN
-    ) {
-      if (entry.userId !== pauserId) {
-        throw new ForbiddenException(
-          "You can only pause your own time entries",
-        );
-      }
-    }
-
-    if (entry.status !== "RUNNING") {
-      throw new BadRequestException("Only running entries can be paused");
-    }
-
     const transactionResult = await this.prisma.$transaction(async (tx) => {
       // Verify entry exists and belongs to company within transaction
       const currentEntry = await tx.timeEntry.findFirst({
@@ -846,6 +853,19 @@ export class TimeEntriesService {
 
       if (!currentEntry) {
         throw new NotFoundException(`Time entry with ID ${id} not found`);
+      }
+
+      // Check permissions within transaction to prevent race conditions
+      if (
+        pauserRole !== UserRole.OWNER &&
+        pauserRole !== UserRole.ADMIN &&
+        pauserRole !== UserRole.SUPER_ADMIN
+      ) {
+        if (currentEntry.userId !== pauserId) {
+          throw new ForbiddenException(
+            "You can only pause your own time entries",
+          );
+        }
       }
 
       // Check status again within transaction
@@ -952,18 +972,22 @@ export class TimeEntriesService {
           },
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { activityId, entryId: updated.id, error: error.message },
+        { activityId, entryId: updated.id, error: errorMessage },
         "Failed to broadcast activity",
       );
     }
 
     try {
       this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { entryId: updated.id, error: error.message },
+        { entryId: updated.id, error: errorMessage },
         "Failed to broadcast time entry update",
       );
     }
@@ -984,24 +1008,6 @@ export class TimeEntriesService {
     resumerId: string,
     resumerRole: UserRole,
   ) {
-    const entry = await this.findOne(id, companyId);
-
-    if (
-      resumerRole !== UserRole.OWNER &&
-      resumerRole !== UserRole.ADMIN &&
-      resumerRole !== UserRole.SUPER_ADMIN
-    ) {
-      if (entry.userId !== resumerId) {
-        throw new ForbiddenException(
-          "You can only resume your own time entries",
-        );
-      }
-    }
-
-    if (entry.status !== "PAUSED") {
-      throw new BadRequestException("Only paused entries can be resumed");
-    }
-
     const transactionResult = await this.prisma.$transaction(async (tx) => {
       // Use findFirst with companyId check to ensure data isolation
       const currentEntry = await tx.timeEntry.findFirst({
@@ -1011,10 +1017,26 @@ export class TimeEntriesService {
             companyId,
           },
         },
-        select: { status: true, userId: true },
       });
 
-      if (!currentEntry || currentEntry.status !== "PAUSED") {
+      if (!currentEntry) {
+        throw new NotFoundException(`Time entry with ID ${id} not found`);
+      }
+
+      // Check permissions within transaction to prevent race conditions
+      if (
+        resumerRole !== UserRole.OWNER &&
+        resumerRole !== UserRole.ADMIN &&
+        resumerRole !== UserRole.SUPER_ADMIN
+      ) {
+        if (currentEntry.userId !== resumerId) {
+          throw new ForbiddenException(
+            "You can only resume your own time entries",
+          );
+        }
+      }
+
+      if (currentEntry.status !== "PAUSED") {
         throw new BadRequestException("Only paused entries can be resumed");
       }
 
@@ -1112,18 +1134,22 @@ export class TimeEntriesService {
           },
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { activityId, entryId: updated.id, error: error.message },
+        { activityId, entryId: updated.id, error: errorMessage },
         "Failed to broadcast activity",
       );
     }
 
     try {
       this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { entryId: updated.id, error: error.message },
+        { entryId: updated.id, error: errorMessage },
         "Failed to broadcast time entry update",
       );
     }
@@ -1134,10 +1160,12 @@ export class TimeEntriesService {
         where: { userId: updated.userId },
         data: { isIdle: false },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Если не удалось обновить isIdle, логируем, но не критично
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorMessage = (error as any)?.message || String(error);
       this.logger.warn(
-        { userId: updated.userId, error: error.message },
+        { userId: updated.userId, error: errorMessage },
         "Failed to reset isIdle when resuming time entry",
       );
     }
@@ -1160,7 +1188,11 @@ export class TimeEntriesService {
     // Validate and constrain limit to prevent performance issues
     const validatedLimit = Math.min(Math.max(1, limit), 1000); // Between 1 and 1000
 
-    const where: any = {
+    const where: {
+      user: { companyId: string };
+      userId?: string;
+      projectId?: string;
+    } = {
       user: {
         companyId,
       },
@@ -1229,9 +1261,6 @@ export class TimeEntriesService {
     deleterId: string,
     deleterRole: UserRole,
   ) {
-    // Initial check for existence and companyId
-    const entry = await this.findOne(id, companyId);
-
     // Perform deletion within transaction to ensure atomicity and verify companyId
     const deleted = await this.prisma.$transaction(async (tx) => {
       // Verify entry exists and belongs to company within transaction
