@@ -42,7 +42,51 @@ export class TimeEntriesController {
     description:
       "Создает новую запись времени. Сотрудники могут создавать записи только для себя. Для сотрудников проект обязателен.",
   })
-  @ApiResponse({ status: 201, description: "Запись времени успешно создана" })
+  @ApiResponse({
+    status: 201,
+    description: "Запись времени успешно создана",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        userId: { type: "string", example: "uuid" },
+        projectId: { type: "string", nullable: true, example: "uuid" },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time", nullable: true },
+        duration: { type: "number", example: 0 },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Разработка функционала",
+        },
+        status: {
+          type: "string",
+          enum: ["RUNNING", "PAUSED", "STOPPED"],
+          example: "RUNNING",
+        },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        user: {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Иван Иванов" },
+            email: { type: "string", example: "ivan@example.com" },
+            avatar: { type: "string", nullable: true },
+          },
+        },
+        project: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Проект" },
+            color: { type: "string", example: "#3b82f6" },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 400,
     description:
@@ -92,7 +136,53 @@ export class TimeEntriesController {
     description: "ID проекта для фильтрации",
     type: String,
   })
-  @ApiResponse({ status: 200, description: "Список записей времени" })
+  @ApiResponse({
+    status: 200,
+    description: "Список записей времени",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          userId: { type: "string", example: "uuid" },
+          projectId: { type: "string", nullable: true, example: "uuid" },
+          startTime: { type: "string", format: "date-time" },
+          endTime: { type: "string", format: "date-time", nullable: true },
+          duration: { type: "number", example: 3600 },
+          description: {
+            type: "string",
+            nullable: true,
+            example: "Разработка функционала",
+          },
+          status: {
+            type: "string",
+            enum: ["RUNNING", "PAUSED", "STOPPED"],
+            example: "STOPPED",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          user: {
+            type: "object",
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Иван Иванов" },
+              email: { type: "string", example: "ivan@example.com" },
+            },
+          },
+          project: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Проект" },
+              color: { type: "string", example: "#3b82f6" },
+            },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   findAll(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,7 +216,53 @@ export class TimeEntriesController {
     description: "ID пользователя для фильтрации (только для админов)",
     type: String,
   })
-  @ApiResponse({ status: 200, description: "Список активных записей времени" })
+  @ApiResponse({
+    status: 200,
+    description: "Список активных записей времени",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          userId: { type: "string", example: "uuid" },
+          projectId: { type: "string", nullable: true, example: "uuid" },
+          startTime: { type: "string", format: "date-time" },
+          endTime: { type: "string", format: "date-time", nullable: true },
+          duration: { type: "number", example: 1800 },
+          description: {
+            type: "string",
+            nullable: true,
+            example: "Разработка функционала",
+          },
+          status: {
+            type: "string",
+            enum: ["RUNNING", "PAUSED"],
+            example: "RUNNING",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          user: {
+            type: "object",
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Иван Иванов" },
+              email: { type: "string", example: "ivan@example.com" },
+            },
+          },
+          project: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Проект" },
+              color: { type: "string", example: "#3b82f6" },
+            },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findActive(@GetUser() user: any, @Query("userId") userId?: string) {
@@ -148,6 +284,49 @@ export class TimeEntriesController {
   @ApiResponse({
     status: 200,
     description: "Список записей времени пользователя",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          userId: { type: "string", example: "uuid" },
+          projectId: { type: "string", nullable: true, example: "uuid" },
+          startTime: { type: "string", format: "date-time" },
+          endTime: { type: "string", format: "date-time", nullable: true },
+          duration: { type: "number", example: 3600 },
+          description: {
+            type: "string",
+            nullable: true,
+            example: "Разработка функционала",
+          },
+          status: {
+            type: "string",
+            enum: ["RUNNING", "PAUSED", "STOPPED"],
+            example: "STOPPED",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          user: {
+            type: "object",
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Иван Иванов" },
+              email: { type: "string", example: "ivan@example.com" },
+            },
+          },
+          project: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Проект" },
+              color: { type: "string", example: "#3b82f6" },
+            },
+          },
+        },
+      },
+    },
   })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -173,7 +352,45 @@ export class TimeEntriesController {
     type: Number,
     example: 100,
   })
-  @ApiResponse({ status: 200, description: "История активности" })
+  @ApiResponse({
+    status: 200,
+    description: "История активности",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          userId: { type: "string", example: "uuid" },
+          projectId: { type: "string", nullable: true, example: "uuid" },
+          type: {
+            type: "string",
+            enum: ["START", "STOP", "PAUSE", "RESUME"],
+            example: "START",
+          },
+          timestamp: { type: "string", format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          user: {
+            type: "object",
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Иван Иванов" },
+              email: { type: "string", example: "ivan@example.com" },
+            },
+          },
+          project: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string", example: "uuid" },
+              name: { type: "string", example: "Проект" },
+              color: { type: "string", example: "#3b82f6" },
+            },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   findActivities(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -213,7 +430,51 @@ export class TimeEntriesController {
     description: "Возвращает информацию о записи времени",
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
-  @ApiResponse({ status: 200, description: "Информация о записи времени" })
+  @ApiResponse({
+    status: 200,
+    description: "Информация о записи времени",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        userId: { type: "string", example: "uuid" },
+        projectId: { type: "string", nullable: true, example: "uuid" },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time", nullable: true },
+        duration: { type: "number", example: 3600 },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Разработка функционала",
+        },
+        status: {
+          type: "string",
+          enum: ["RUNNING", "PAUSED", "STOPPED"],
+          example: "STOPPED",
+        },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        user: {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Иван Иванов" },
+            email: { type: "string", example: "ivan@example.com" },
+            avatar: { type: "string", nullable: true },
+          },
+        },
+        project: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Проект" },
+            color: { type: "string", example: "#3b82f6" },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -227,7 +488,50 @@ export class TimeEntriesController {
     description: "Обновляет информацию о записи времени",
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
-  @ApiResponse({ status: 200, description: "Запись времени успешно обновлена" })
+  @ApiResponse({
+    status: 200,
+    description: "Запись времени успешно обновлена",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        userId: { type: "string", example: "uuid" },
+        projectId: { type: "string", nullable: true, example: "uuid" },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time", nullable: true },
+        duration: { type: "number", example: 3600 },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Разработка функционала",
+        },
+        status: {
+          type: "string",
+          enum: ["RUNNING", "PAUSED", "STOPPED"],
+          example: "RUNNING",
+        },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        user: {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Иван Иванов" },
+            email: { type: "string", example: "ivan@example.com" },
+          },
+        },
+        project: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Проект" },
+            color: { type: "string", example: "#3b82f6" },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
@@ -253,7 +557,47 @@ export class TimeEntriesController {
       "Останавливает активную запись времени и вычисляет финальную длительность",
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
-  @ApiResponse({ status: 200, description: "Таймер успешно остановлен" })
+  @ApiResponse({
+    status: 200,
+    description: "Таймер успешно остановлен",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        userId: { type: "string", example: "uuid" },
+        projectId: { type: "string", nullable: true, example: "uuid" },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time" },
+        duration: { type: "number", example: 3600 },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Разработка функционала",
+        },
+        status: { type: "string", enum: ["STOPPED"], example: "STOPPED" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        user: {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Иван Иванов" },
+            email: { type: "string", example: "ivan@example.com" },
+            avatar: { type: "string", nullable: true },
+          },
+        },
+        project: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Проект" },
+            color: { type: "string", example: "#3b82f6" },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Запись времени уже остановлена" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
@@ -268,7 +612,47 @@ export class TimeEntriesController {
     description: "Приостанавливает активную запись времени",
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
-  @ApiResponse({ status: 200, description: "Таймер успешно приостановлен" })
+  @ApiResponse({
+    status: 200,
+    description: "Таймер успешно приостановлен",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        userId: { type: "string", example: "uuid" },
+        projectId: { type: "string", nullable: true, example: "uuid" },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time", nullable: true },
+        duration: { type: "number", example: 1800 },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Разработка функционала",
+        },
+        status: { type: "string", enum: ["PAUSED"], example: "PAUSED" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        user: {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Иван Иванов" },
+            email: { type: "string", example: "ivan@example.com" },
+            avatar: { type: "string", nullable: true },
+          },
+        },
+        project: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Проект" },
+            color: { type: "string", example: "#3b82f6" },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 400,
     description: "Запись времени не может быть приостановлена",
@@ -291,7 +675,47 @@ export class TimeEntriesController {
     description: "Возобновляет приостановленную запись времени",
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
-  @ApiResponse({ status: 200, description: "Таймер успешно возобновлен" })
+  @ApiResponse({
+    status: 200,
+    description: "Таймер успешно возобновлен",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        userId: { type: "string", example: "uuid" },
+        projectId: { type: "string", nullable: true, example: "uuid" },
+        startTime: { type: "string", format: "date-time" },
+        endTime: { type: "string", format: "date-time", nullable: true },
+        duration: { type: "number", example: 1800 },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Разработка функционала",
+        },
+        status: { type: "string", enum: ["RUNNING"], example: "RUNNING" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        user: {
+          type: "object",
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Иван Иванов" },
+            email: { type: "string", example: "ivan@example.com" },
+            avatar: { type: "string", nullable: true },
+          },
+        },
+        project: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string", example: "uuid" },
+            name: { type: "string", example: "Проект" },
+            color: { type: "string", example: "#3b82f6" },
+          },
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 400,
     description: "Запись времени не может быть возобновлена",
