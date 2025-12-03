@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  Max,
   IsEnum,
   Matches,
 } from "class-validator";
@@ -57,14 +58,16 @@ export class CreateProjectDto {
   clientName?: string;
 
   @ApiPropertyOptional({
-    description: "Бюджет проекта (в долларах)",
+    description: "Бюджет проекта (в долларах, максимум $999,999,999)",
     example: 10000,
     minimum: 0,
+    maximum: 999999999,
     type: Number,
   })
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(999999999, { message: "Budget cannot exceed $999,999,999" })
   budget?: number;
 
   @ApiPropertyOptional({

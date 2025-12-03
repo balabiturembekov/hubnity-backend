@@ -5,7 +5,8 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
   @ApiPropertyOptional({
-    description: "Новый пароль (минимум 8 символов)",
+    description:
+      "Новый пароль (минимум 8 символов, максимум 128, должен содержать хотя бы одну букву и одну цифру)",
     example: "newpassword123",
     minLength: 8,
     maxLength: 128,
