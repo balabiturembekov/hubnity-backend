@@ -17,6 +17,7 @@ import { TeamActivityModule } from "./team-activity/team-activity.module";
 import { CompaniesModule } from "./companies/companies.module";
 import { CacheModule } from "./cache/cache.module";
 import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
+import { AppActivityModule } from "./app-activity/app-activity.module";
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
                   },
                 },
             serializers: {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               req: (req: any) => ({
                 id: req.id,
                 method: req.method,
@@ -54,26 +56,31 @@ import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
                   "user-agent": req.headers?.["user-agent"],
                 },
               }),
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               res: (res: any) => ({
                 statusCode: res.statusCode,
               }),
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               err: (err: any) => ({
                 type: err.type,
                 message: err.message,
                 stack: err.stack,
               }),
             },
-            genReqId: (req: any, res: any) => {
-              const existingId = req.id ?? req.headers["x-request-id"];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            genReqId: (_req: any, res: any) => {
+              const existingId = _req.id ?? _req.headers["x-request-id"];
               if (existingId) return existingId;
               const id = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
               res.setHeader("X-Request-Id", id);
               return id;
             },
-            customProps: (req: any) => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            customProps: (_req: any) => ({
               context: "HTTP",
             }),
-            customLogLevel: (req: any, res: any, err: any) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            customLogLevel: (_req: any, res: any, err: any) => {
               if (res.statusCode >= 400 && res.statusCode < 500) {
                 return "warn";
               } else if (res.statusCode >= 500 || err) {
@@ -108,6 +115,7 @@ import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
     TeamActivityModule,
     CompaniesModule,
     IdleDetectionModule,
+    AppActivityModule,
   ],
   controllers: [AppController],
   providers: [
