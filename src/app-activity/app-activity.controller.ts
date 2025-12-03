@@ -8,6 +8,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -332,11 +333,11 @@ export class AppActivityController {
     const endDateObj = endDate ? new Date(endDate) : undefined;
 
     if (startDate && startDateObj && isNaN(startDateObj.getTime())) {
-      throw new Error("Invalid startDate format");
+      throw new BadRequestException("Invalid startDate format");
     }
 
     if (endDate && endDateObj && isNaN(endDateObj.getTime())) {
-      throw new Error("Invalid endDate format");
+      throw new BadRequestException("Invalid endDate format");
     }
 
     return this.appActivityService.getUserStats(

@@ -25,43 +25,7 @@ export class AppActivityService {
     userId: string,
     userRole: UserRole,
   ) {
-    // Проверяем существование time entry и права доступа в транзакции
-    await this.prisma.$transaction(async (tx) => {
-      const entry = await tx.timeEntry.findFirst({
-        where: {
-          id: dto.timeEntryId,
-          user: {
-            companyId,
-          },
-        },
-        include: {
-          user: true,
-        },
-      });
-
-      if (!entry) {
-        throw new NotFoundException(
-          `Time entry with ID ${dto.timeEntryId} not found`,
-        );
-      }
-
-      // Проверка прав: сотрудники могут создавать только для своих записей
-      if (
-        userRole !== UserRole.OWNER &&
-        userRole !== UserRole.ADMIN &&
-        userRole !== UserRole.SUPER_ADMIN
-      ) {
-        if (entry.userId !== userId) {
-          throw new ForbiddenException(
-            "You can only create app activities for your own time entries",
-          );
-        }
-      }
-
-      return entry;
-    });
-
-    // Валидация времени
+    // Валидация времени (выполняем ДО транзакции для эффективности)
     if (dto.timeSpent < 0) {
       throw new BadRequestException("Time spent cannot be negative");
     }
@@ -103,33 +67,67 @@ export class AppActivityService {
       throw new BadRequestException("App name cannot be empty");
     }
 
-    // Создаем запись
-    const appActivity = await this.prisma.appActivity.create({
-      data: {
-        timeEntryId: dto.timeEntryId,
-        userId,
-        appName: sanitizedAppName,
-        windowTitle: sanitizedWindowTitle,
-        timeSpent: dto.timeSpent,
-        startTime,
-        endTime,
-      },
-      include: {
-        timeEntry: {
-          select: {
-            id: true,
-            description: true,
-            status: true,
+    // Проверяем существование time entry, права доступа и создаем запись в одной транзакции
+    const appActivity = await this.prisma.$transaction(async (tx) => {
+      const entry = await tx.timeEntry.findFirst({
+        where: {
+          id: dto.timeEntryId,
+          user: {
+            companyId,
           },
         },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+        include: {
+          user: true,
+        },
+      });
+
+      if (!entry) {
+        throw new NotFoundException(
+          `Time entry with ID ${dto.timeEntryId} not found`,
+        );
+      }
+
+      // Проверка прав: сотрудники могут создавать только для своих записей
+      if (
+        userRole !== UserRole.OWNER &&
+        userRole !== UserRole.ADMIN &&
+        userRole !== UserRole.SUPER_ADMIN
+      ) {
+        if (entry.userId !== userId) {
+          throw new ForbiddenException(
+            "You can only create app activities for your own time entries",
+          );
+        }
+      }
+
+      // Создаем запись внутри транзакции для предотвращения race condition
+      return tx.appActivity.create({
+        data: {
+          timeEntryId: dto.timeEntryId,
+          userId,
+          appName: sanitizedAppName,
+          windowTitle: sanitizedWindowTitle,
+          timeSpent: dto.timeSpent,
+          startTime,
+          endTime,
+        },
+        include: {
+          timeEntry: {
+            select: {
+              id: true,
+              description: true,
+              status: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
-      },
+      });
     });
 
     this.logger.debug(
@@ -198,36 +196,89 @@ export class AppActivityService {
       }
     }
 
+    // Валидация всех записей перед транзакцией
+    for (const activity of dto.activities) {
+      // Валидация времени
+      if (activity.timeSpent < 0) {
+        throw new BadRequestException(
+          `Time spent cannot be negative for activity with app "${activity.appName}"`,
+        );
+      }
+
+      if (activity.timeSpent > 86400) {
+        throw new BadRequestException(
+          `Time spent cannot exceed 24 hours (86400 seconds) for activity with app "${activity.appName}"`,
+        );
+      }
+
+      // Валидация и обработка дат
+      let startTime: Date = new Date();
+      let endTime: Date | undefined;
+
+      if (activity.startTime) {
+        startTime = new Date(activity.startTime);
+        if (isNaN(startTime.getTime())) {
+          throw new BadRequestException(
+            `Invalid startTime format for activity with app "${activity.appName}"`,
+          );
+        }
+      }
+
+      if (activity.endTime) {
+        endTime = new Date(activity.endTime);
+        if (isNaN(endTime.getTime())) {
+          throw new BadRequestException(
+            `Invalid endTime format for activity with app "${activity.appName}"`,
+          );
+        }
+        if (endTime < startTime) {
+          throw new BadRequestException(
+            `endTime must be after startTime for activity with app "${activity.appName}"`,
+          );
+        }
+      }
+
+      // Санитизация и валидация appName
+      const sanitizedAppName = activity.appName.trim();
+      if (sanitizedAppName.length === 0) {
+        throw new BadRequestException(
+          `App name cannot be empty for activity at index ${dto.activities.indexOf(activity)}`,
+        );
+      }
+    }
+
     // Создаем все записи в транзакции
-    const created = await this.prisma.$transaction(
-      dto.activities.map((activity) => {
-        const sanitizedAppName = activity.appName.trim();
-        const sanitizedWindowTitle = activity.windowTitle?.trim() || null;
+    const created = await this.prisma.$transaction(async (tx) => {
+      return Promise.all(
+        dto.activities.map((activity) => {
+          const sanitizedAppName = activity.appName.trim();
+          const sanitizedWindowTitle = activity.windowTitle?.trim() || null;
 
-        let startTime: Date = new Date();
-        let endTime: Date | undefined;
+          let startTime: Date = new Date();
+          let endTime: Date | undefined;
 
-        if (activity.startTime) {
-          startTime = new Date(activity.startTime);
-        }
+          if (activity.startTime) {
+            startTime = new Date(activity.startTime);
+          }
 
-        if (activity.endTime) {
-          endTime = new Date(activity.endTime);
-        }
+          if (activity.endTime) {
+            endTime = new Date(activity.endTime);
+          }
 
-        return this.prisma.appActivity.create({
-          data: {
-            timeEntryId: activity.timeEntryId,
-            userId,
-            appName: sanitizedAppName,
-            windowTitle: sanitizedWindowTitle,
-            timeSpent: activity.timeSpent,
-            startTime,
-            endTime,
-          },
-        });
-      }),
-    );
+          return tx.appActivity.create({
+            data: {
+              timeEntryId: activity.timeEntryId,
+              userId,
+              appName: sanitizedAppName,
+              windowTitle: sanitizedWindowTitle,
+              timeSpent: activity.timeSpent,
+              startTime,
+              endTime,
+            },
+          });
+        }),
+      );
+    });
 
     this.logger.debug(
       {
