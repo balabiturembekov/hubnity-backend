@@ -43,7 +43,33 @@ export class UsersController {
     description:
       "Создает нового пользователя в компании. Доступно только для OWNER и ADMIN.",
   })
-  @ApiResponse({ status: 201, description: "Пользователь успешно создан" })
+  @ApiResponse({
+    status: 201,
+    description: "Пользователь успешно создан",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Иван Иванов" },
+        email: { type: "string", example: "ivan@example.com" },
+        role: {
+          type: "string",
+          enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
+          example: "EMPLOYEE",
+        },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "INACTIVE"],
+          example: "ACTIVE",
+        },
+        avatar: { type: "string", nullable: true },
+        hourlyRate: { type: "number", nullable: true, example: 25.5 },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,7 +85,36 @@ export class UsersController {
     description:
       "Возвращает список всех пользователей компании. Доступно только для OWNER и ADMIN.",
   })
-  @ApiResponse({ status: 200, description: "Список пользователей" })
+  @ApiResponse({
+    status: 200,
+    description: "Список пользователей",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          name: { type: "string", example: "Иван Иванов" },
+          email: { type: "string", example: "ivan@example.com" },
+          role: {
+            type: "string",
+            enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
+            example: "EMPLOYEE",
+          },
+          status: {
+            type: "string",
+            enum: ["ACTIVE", "INACTIVE"],
+            example: "ACTIVE",
+          },
+          avatar: { type: "string", nullable: true },
+          hourlyRate: { type: "number", nullable: true, example: 25.5 },
+          companyId: { type: "string", example: "uuid" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findAll(@GetUser() user: any) {
@@ -71,7 +126,33 @@ export class UsersController {
     summary: "Получить свой профиль",
     description: "Возвращает информацию о текущем пользователе",
   })
-  @ApiResponse({ status: 200, description: "Информация о пользователе" })
+  @ApiResponse({
+    status: 200,
+    description: "Информация о пользователе",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Иван Иванов" },
+        email: { type: "string", example: "ivan@example.com" },
+        role: {
+          type: "string",
+          enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
+          example: "EMPLOYEE",
+        },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "INACTIVE"],
+          example: "ACTIVE",
+        },
+        avatar: { type: "string", nullable: true },
+        hourlyRate: { type: "number", nullable: true, example: 25.5 },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getMyProfile(@GetUser() user: any) {
@@ -83,7 +164,33 @@ export class UsersController {
     summary: "Обновить свой профиль",
     description: "Обновляет информацию о текущем пользователе",
   })
-  @ApiResponse({ status: 200, description: "Профиль успешно обновлен" })
+  @ApiResponse({
+    status: 200,
+    description: "Профиль успешно обновлен",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Иван Иванов" },
+        email: { type: "string", example: "ivan@example.com" },
+        role: {
+          type: "string",
+          enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
+          example: "EMPLOYEE",
+        },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "INACTIVE"],
+          example: "ACTIVE",
+        },
+        avatar: { type: "string", nullable: true },
+        hourlyRate: { type: "number", nullable: true, example: 25.5 },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 404, description: "Пользователь не найден" })
@@ -110,7 +217,33 @@ export class UsersController {
       "Возвращает информацию о пользователе. Сотрудники могут видеть только свой профиль.",
   })
   @ApiParam({ name: "id", description: "ID пользователя", type: String })
-  @ApiResponse({ status: 200, description: "Информация о пользователе" })
+  @ApiResponse({
+    status: 200,
+    description: "Информация о пользователе",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Иван Иванов" },
+        email: { type: "string", example: "ivan@example.com" },
+        role: {
+          type: "string",
+          enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
+          example: "EMPLOYEE",
+        },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "INACTIVE"],
+          example: "ACTIVE",
+        },
+        avatar: { type: "string", nullable: true },
+        hourlyRate: { type: "number", nullable: true, example: 25.5 },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Пользователь не найден" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -136,7 +269,33 @@ export class UsersController {
       "Обновляет информацию о пользователе. Доступно только для OWNER и ADMIN.",
   })
   @ApiParam({ name: "id", description: "ID пользователя", type: String })
-  @ApiResponse({ status: 200, description: "Пользователь успешно обновлен" })
+  @ApiResponse({
+    status: 200,
+    description: "Пользователь успешно обновлен",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Иван Иванов" },
+        email: { type: "string", example: "ivan@example.com" },
+        role: {
+          type: "string",
+          enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
+          example: "EMPLOYEE",
+        },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "INACTIVE"],
+          example: "ACTIVE",
+        },
+        avatar: { type: "string", nullable: true },
+        hourlyRate: { type: "number", nullable: true, example: 25.5 },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Пользователь не найден" })

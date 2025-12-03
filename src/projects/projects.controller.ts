@@ -42,9 +42,36 @@ export class ProjectsController {
     description:
       "Создает новый проект в компании. Доступно только для OWNER и ADMIN.",
   })
-  @ApiResponse({ status: 201, description: "Проект успешно создан" })
+  @ApiResponse({
+    status: 201,
+    description: "Проект успешно создан",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Новый проект" },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Описание проекта",
+        },
+        color: { type: "string", example: "#3b82f6" },
+        clientName: { type: "string", nullable: true, example: "Клиент" },
+        budget: { type: "number", nullable: true, example: 100000 },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "ARCHIVED"],
+          example: "ACTIVE",
+        },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create(@Body() createProjectDto: CreateProjectDto, @GetUser() user: any) {
     return this.projectsService.create(createProjectDto, user.companyId);
   }
@@ -54,8 +81,38 @@ export class ProjectsController {
     summary: "Получить список всех проектов",
     description: "Возвращает список всех проектов компании",
   })
-  @ApiResponse({ status: 200, description: "Список проектов" })
+  @ApiResponse({
+    status: 200,
+    description: "Список проектов",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          name: { type: "string", example: "Новый проект" },
+          description: {
+            type: "string",
+            nullable: true,
+            example: "Описание проекта",
+          },
+          color: { type: "string", example: "#3b82f6" },
+          clientName: { type: "string", nullable: true, example: "Клиент" },
+          budget: { type: "number", nullable: true, example: 100000 },
+          status: {
+            type: "string",
+            enum: ["ACTIVE", "ARCHIVED"],
+            example: "ACTIVE",
+          },
+          companyId: { type: "string", example: "uuid" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findAll(@GetUser() user: any) {
     return this.projectsService.findAll(user.companyId);
   }
@@ -65,8 +122,38 @@ export class ProjectsController {
     summary: "Получить список активных проектов",
     description: "Возвращает список только активных проектов компании",
   })
-  @ApiResponse({ status: 200, description: "Список активных проектов" })
+  @ApiResponse({
+    status: 200,
+    description: "Список активных проектов",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          name: { type: "string", example: "Новый проект" },
+          description: {
+            type: "string",
+            nullable: true,
+            example: "Описание проекта",
+          },
+          color: { type: "string", example: "#3b82f6" },
+          clientName: { type: "string", nullable: true, example: "Клиент" },
+          budget: { type: "number", nullable: true, example: 100000 },
+          status: {
+            type: "string",
+            enum: ["ACTIVE"],
+            example: "ACTIVE",
+          },
+          companyId: { type: "string", example: "uuid" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findActive(@GetUser() user: any) {
     return this.projectsService.findActive(user.companyId);
   }
@@ -77,9 +164,36 @@ export class ProjectsController {
     description: "Возвращает информацию о проекте",
   })
   @ApiParam({ name: "id", description: "ID проекта", type: String })
-  @ApiResponse({ status: 200, description: "Информация о проекте" })
+  @ApiResponse({
+    status: 200,
+    description: "Информация о проекте",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Новый проект" },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Описание проекта",
+        },
+        color: { type: "string", example: "#3b82f6" },
+        clientName: { type: "string", nullable: true, example: "Клиент" },
+        budget: { type: "number", nullable: true, example: 100000 },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "ARCHIVED"],
+          example: "ACTIVE",
+        },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
   @ApiResponse({ status: 404, description: "Проект не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   findOne(@Param("id") id: string, @GetUser() user: any) {
     return this.projectsService.findOne(id, user.companyId);
   }
@@ -93,13 +207,40 @@ export class ProjectsController {
       "Обновляет информацию о проекте. Доступно только для OWNER и ADMIN.",
   })
   @ApiParam({ name: "id", description: "ID проекта", type: String })
-  @ApiResponse({ status: 200, description: "Проект успешно обновлен" })
+  @ApiResponse({
+    status: 200,
+    description: "Проект успешно обновлен",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        name: { type: "string", example: "Новый проект" },
+        description: {
+          type: "string",
+          nullable: true,
+          example: "Описание проекта",
+        },
+        color: { type: "string", example: "#3b82f6" },
+        clientName: { type: "string", nullable: true, example: "Клиент" },
+        budget: { type: "number", nullable: true, example: 100000 },
+        status: {
+          type: "string",
+          enum: ["ACTIVE", "ARCHIVED"],
+          example: "ACTIVE",
+        },
+        companyId: { type: "string", example: "uuid" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Проект не найден" })
   update(
     @Param("id") id: string,
     @Body() updateProjectDto: UpdateProjectDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
   ) {
     return this.projectsService.update(id, updateProjectDto, user.companyId);
@@ -118,6 +259,7 @@ export class ProjectsController {
   @ApiResponse({ status: 204, description: "Проект успешно удален" })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Проект не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   remove(@Param("id") id: string, @GetUser() user: any) {
     return this.projectsService.remove(id, user.companyId);
   }
