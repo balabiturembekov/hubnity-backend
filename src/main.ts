@@ -176,6 +176,16 @@ async function bootstrap() {
     },
   });
 
+  // Endpoint для скачивания JSON схемы
+  app.getHttpAdapter().get("/api/docs-json", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="hubnity-api-schema.json"',
+    );
+    res.send(JSON.stringify(document, null, 2));
+  });
+
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`🚀 Server is running on http://localhost:${port}/api`);

@@ -18,6 +18,8 @@ import { CompaniesModule } from "./companies/companies.module";
 import { CacheModule } from "./cache/cache.module";
 import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
 import { AppActivityModule } from "./app-activity/app-activity.module";
+import { UrlActivityModule } from "./url-activity/url-activity.module";
+import { BlockedUrlModule } from "./blocked-url/blocked-url.module";
 
 @Module({
   imports: [
@@ -116,6 +118,8 @@ import { AppActivityModule } from "./app-activity/app-activity.module";
     CompaniesModule,
     IdleDetectionModule,
     AppActivityModule,
+    UrlActivityModule,
+    BlockedUrlModule,
   ],
   controllers: [AppController],
   providers: [

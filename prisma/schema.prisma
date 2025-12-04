@@ -22,8 +22,9 @@ model Company {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  users    User[]
-  projects Project[]
+  users       User[]
+  projects    Project[]
+  blockedUrls BlockedUrl[]
 
   @@map("companies")
 }
@@ -49,6 +50,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   userActivity        UserActivity?
   appActivities       AppActivity[]
+  urlActivities       UrlActivity[]
 
   @@unique([email, companyId])
   @@index([companyId])
@@ -91,6 +93,7 @@ model TimeEntry {
   project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   screenshots   Screenshot[]
   appActivities AppActivity[]
+  urlActivities UrlActivity[]
 
   @@index([userId])
   @@index([projectId])
@@ -203,6 +206,46 @@ model AppActivity {
   @@index([startTime])
   @@index([userId, startTime])
   @@map("app_activities")
+}
+
+model UrlActivity {
+  id          String    @id @default(uuid())
+  timeEntryId String
+  userId      String
+  url         String // Полный URL
+  domain      String // Домен (например, "github.com")
+  title       String? // Заголовок страницы
+  timeSpent   Int       @default(0) // время использования в секундах
+  startTime   DateTime  @default(now()) // время начала использования URL
+  endTime     DateTime? // время окончания использования URL
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  timeEntry TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([timeEntryId])
+  @@index([userId])
+  @@index([domain])
+  @@index([startTime])
+  @@index([userId, startTime])
+  @@map("url_activities")
+}
+
+model BlockedUrl {
+  id        String   @id @default(uuid())
+  companyId String
+  url       String? // Конкретный URL (опционально, для точной блокировки)
+  domain    String? // Домен (опционально, для блокировки всего домена)
+  pattern   String? // Regex паттерн (опционально, для сложных правил)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([domain])
+  @@map("blocked_urls")
 }
 
 enum UserRole {
