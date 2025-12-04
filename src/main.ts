@@ -62,7 +62,7 @@ async function bootstrap() {
 
       return origins.length > 0 ? [...new Set(origins)] : [];
     } else {
-      // Development: allow localhost on different ports
+      // Development: allow localhost on different ports + Tauri desktop app
       return [
         process.env.FRONTEND_URL || "http://localhost:3002",
         "http://localhost:3000",
@@ -71,6 +71,10 @@ async function bootstrap() {
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001", // Swagger UI
         "http://127.0.0.1:3002",
+        // Tauri desktop app origins
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
       ].filter(Boolean);
     }
   };
@@ -93,23 +97,55 @@ async function bootstrap() {
             // 1. Health checks (GET /api)
             // 2. OPTIONS preflight requests
             // 3. Internal requests from Nginx/Docker
+            // 4. Tauri desktop app (may send requests without origin)
             if (!origin) {
               // Get request info from callback context (if available)
               // For now, allow in production for health checks and internal requests
               // Nginx should add Origin header, but we allow without it for compatibility
+              // Tauri desktop apps may also send requests without origin
               if (process.env.NODE_ENV === "production") {
-                // In production, allow requests without origin for health checks
-                // but log them for monitoring
+                // In production, allow requests without origin for:
+                // - Health checks
+                // - Tauri desktop app (if ALLOWED_ORIGINS includes tauri://localhost)
+                // - Internal requests
+                const allowsTauri =
+                  process.env.ALLOWED_ORIGINS?.includes("tauri://localhost") ||
+                  process.env.ALLOWED_ORIGINS?.includes(
+                    "http://tauri.localhost",
+                  );
+                if (allowsTauri) {
+                  console.log(
+                    "CORS: Allowing request with no origin (Tauri desktop app or health check)",
+                  );
+                  return callback(null, true);
+                }
                 console.log(
                   "CORS: Allowing request with no origin (likely health check or internal request)",
                 );
                 return callback(null, true);
               }
-              // Allow in development for testing
+              // Allow in development for testing and Tauri
               console.log(
-                "CORS: Allowing request with no origin (development mode)",
+                "CORS: Allowing request with no origin (development mode or Tauri desktop app)",
               );
               return callback(null, true);
+            }
+
+            // Check for Tauri origins
+            if (
+              origin === "tauri://localhost" ||
+              origin === "http://tauri.localhost" ||
+              origin === "https://tauri.localhost" ||
+              origin.startsWith("tauri://")
+            ) {
+              // Allow Tauri in development, or if explicitly allowed in production
+              if (
+                process.env.NODE_ENV !== "production" ||
+                allowedOrigins.some((o) => o.includes("tauri"))
+              ) {
+                console.log(`CORS: Allowing Tauri origin: ${origin}`);
+                return callback(null, true);
+              }
             }
 
             if (allowedOrigins.includes(origin)) {
