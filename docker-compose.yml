@@ -93,8 +93,9 @@ services:
       # Sentry (optional)
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENABLE_DEV: ${SENTRY_ENABLE_DEV:-false}
-    ports:
-      - "${PORT:-3001}:3001"
+    # Port mapping removed - backend only accessible through nginx
+    # ports:
+    #   - "${PORT:-3001}:3001"
     volumes:
       - uploads_data:/app/uploads
     networks:
@@ -118,6 +119,31 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Internal Nginx (reverse proxy to backend)
+  nginx:
+    image: nginx:alpine
+    container_name: time-tracker-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-9090}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - timetracker-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost/health || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres_data:
