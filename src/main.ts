@@ -164,6 +164,9 @@ async function bootstrap() {
     .addTag("screenshots", "Скриншоты")
     .addTag("team-activity", "Активность команды")
     .addTag("idle-detection", "Детекция простоя")
+    .addTag("app-activity", "Отслеживание приложений")
+    .addTag("url-activity", "Отслеживание URL")
+    .addTag("blocked-urls", "Заблокированные URL")
     .addTag("health", "Проверка работоспособности")
     .build();
 
