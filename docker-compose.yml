@@ -11,8 +11,9 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Port mapping removed - PostgreSQL only accessible within Docker network
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
     networks:
       - timetracker-network
     healthcheck:

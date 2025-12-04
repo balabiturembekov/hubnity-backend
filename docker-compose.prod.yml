@@ -1,5 +1,8 @@
 services:
   postgres:
+    # Port mapping removed - PostgreSQL only accessible within Docker network
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
     # Production PostgreSQL optimizations
     command: >
       postgres
