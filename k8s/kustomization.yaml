@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hubnity
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - redis.yaml
+  - backend.yaml
+  - ingress.yaml
+
+# Для подстановки образа: kustomize edit set image ghcr.io/balabiturembekov/hubnity-backend:TAG
