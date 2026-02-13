@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -15,6 +16,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiQuery,
 } from "@nestjs/swagger";
 import { PinoLogger } from "nestjs-pino";
 import { ScreenshotsService } from "./screenshots.service";
@@ -110,6 +112,13 @@ export class ScreenshotsController {
     description: "ID записи времени",
     type: String,
   })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Максимальное количество скриншотов (максимум 1000, по умолчанию 100)",
+    type: Number,
+    example: 100,
+  })
   @ApiResponse({
     status: 200,
     description: "Список скриншотов",
@@ -138,11 +147,21 @@ export class ScreenshotsController {
     @Param("timeEntryId") timeEntryId: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
+    @Query("limit") limit?: string,
   ) {
+    let parsedLimit = 100;
+    if (limit) {
+      const parsed = parseInt(limit, 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 1000) {
+        parsedLimit = parsed;
+      }
+    }
+
     return this.screenshotsService.findByTimeEntry(
       timeEntryId,
       user.companyId,
       user.id,
+      parsedLimit,
     );
   }
 

@@ -286,6 +286,55 @@ export class ProjectsService {
     return updated;
   }
 
+  async getBudgetStatus(id: string, companyId: string) {
+    const project = await this.findOne(id, companyId);
+    if (!project.budget) {
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        budget: null,
+        used: null,
+        remaining: null,
+        usedPercent: null,
+        message: "Project has no budget set",
+      };
+    }
+
+    const entries = await this.prisma.timeEntry.findMany({
+      where: {
+        projectId: id,
+        status: "STOPPED",
+        user: { companyId },
+      },
+      select: {
+        duration: true,
+        user: { select: { hourlyRate: true } },
+      },
+    });
+
+    let used = 0;
+    entries.forEach((e) => {
+      const hours = (e.duration || 0) / 3600;
+      const rate = e.user?.hourlyRate ?? 0;
+      used += hours * rate;
+    });
+    used = Math.round(used * 100) / 100;
+    const budget = project.budget;
+    const remaining = Math.round((budget - used) * 100) / 100;
+    const usedPercent =
+      budget > 0 ? Math.round((used / budget) * 10000) / 100 : 0;
+
+    return {
+      projectId: project.id,
+      projectName: project.name,
+      budget,
+      used,
+      remaining,
+      usedPercent,
+      entriesCount: entries.length,
+    };
+  }
+
   async remove(id: string, companyId: string) {
     // Initial check for existence and companyId
     await this.findOne(id, companyId);

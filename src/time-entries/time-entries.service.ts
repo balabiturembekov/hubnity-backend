@@ -225,7 +225,12 @@ export class TimeEntriesService {
     return entry;
   }
 
-  async findAll(companyId: string, userId?: string, projectId?: string) {
+  async findAll(
+    companyId: string,
+    userId?: string,
+    projectId?: string,
+    limit: number = 100,
+  ) {
     const where: {
       user: { companyId: string };
       userId?: string;
@@ -274,6 +279,7 @@ export class TimeEntriesService {
 
     return this.prisma.timeEntry.findMany({
       where,
+      take: limit,
       include: {
         user: {
           select: {
@@ -377,6 +383,212 @@ export class TimeEntriesService {
     }
 
     return entry;
+  }
+
+  async findPending(
+    companyId: string,
+    userId?: string,
+    limit: number = 100,
+  ) {
+    const where: {
+      user: { companyId: string };
+      userId?: string;
+      status: "STOPPED";
+      approvalStatus: "PENDING";
+    } = {
+      user: { companyId },
+      status: "STOPPED",
+      approvalStatus: "PENDING",
+    };
+
+    if (userId) {
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId, companyId },
+        select: { id: true },
+      });
+      if (!user) {
+        throw new NotFoundException(
+          `User with ID ${userId} not found in your company`,
+        );
+      }
+      where.userId = userId;
+    }
+
+    return this.prisma.timeEntry.findMany({
+      where,
+      take: limit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
+      },
+      orderBy: { startTime: "desc" },
+    });
+  }
+
+  async approve(entryId: string, companyId: string, approverId: string) {
+    const entry = await this.prisma.timeEntry.findFirst({
+      where: {
+        id: entryId,
+        user: { companyId },
+      },
+    });
+
+    if (!entry) {
+      throw new NotFoundException(
+        `Time entry with ID ${entryId} not found`,
+      );
+    }
+
+    if (entry.approvalStatus !== "PENDING") {
+      throw new BadRequestException(
+        `Time entry is not pending approval (current status: ${entry.approvalStatus})`,
+      );
+    }
+
+    const updated = await this.prisma.timeEntry.update({
+      where: { id: entryId },
+      data: {
+        approvalStatus: "APPROVED",
+        approvedBy: approverId,
+        approvedAt: new Date(),
+        rejectionComment: null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
+      },
+    });
+
+    this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    return updated;
+  }
+
+  async reject(
+    entryId: string,
+    companyId: string,
+    approverId: string,
+    rejectionComment?: string,
+  ) {
+    const entry = await this.prisma.timeEntry.findFirst({
+      where: {
+        id: entryId,
+        user: { companyId },
+      },
+    });
+
+    if (!entry) {
+      throw new NotFoundException(
+        `Time entry with ID ${entryId} not found`,
+      );
+    }
+
+    if (entry.approvalStatus !== "PENDING") {
+      throw new BadRequestException(
+        `Time entry is not pending approval (current status: ${entry.approvalStatus})`,
+      );
+    }
+
+    const updated = await this.prisma.timeEntry.update({
+      where: { id: entryId },
+      data: {
+        approvalStatus: "REJECTED",
+        approvedBy: approverId,
+        approvedAt: new Date(),
+        rejectionComment: rejectionComment ?? null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatar: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
+      },
+    });
+
+    this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+    return updated;
+  }
+
+  async bulkApprove(
+    ids: string[],
+    companyId: string,
+    approverId: string,
+  ) {
+    const result = await this.prisma.timeEntry.updateMany({
+      where: {
+        id: { in: ids },
+        user: { companyId },
+        approvalStatus: "PENDING",
+      },
+      data: {
+        approvalStatus: "APPROVED",
+        approvedBy: approverId,
+        approvedAt: new Date(),
+        rejectionComment: null,
+      },
+    });
+
+    this.eventsGateway.broadcastStatsUpdate({ companyId }, companyId);
+    return { approvedCount: result.count };
+  }
+
+  async bulkReject(
+    ids: string[],
+    companyId: string,
+    approverId: string,
+    rejectionComment?: string,
+  ) {
+    const result = await this.prisma.timeEntry.updateMany({
+      where: {
+        id: { in: ids },
+        user: { companyId },
+        approvalStatus: "PENDING",
+      },
+      data: {
+        approvalStatus: "REJECTED",
+        approvedBy: approverId,
+        approvedAt: new Date(),
+        rejectionComment: rejectionComment ?? null,
+      },
+    });
+
+    this.eventsGateway.broadcastStatsUpdate({ companyId }, companyId);
+    return { rejectedCount: result.count };
   }
 
   async update(
@@ -739,6 +951,7 @@ export class TimeEntriesService {
           endTime,
           duration: finalDuration,
           status: "STOPPED",
+          approvalStatus: "PENDING",
         },
         include: {
           user: {

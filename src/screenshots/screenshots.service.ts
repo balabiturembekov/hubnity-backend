@@ -252,6 +252,7 @@ export class ScreenshotsService {
     timeEntryId: string,
     companyId: string,
     userId: string,
+    limit: number = 100,
   ) {
     // Perform all checks within transaction to prevent race conditions
     await this.prisma.$transaction(async (tx) => {
@@ -292,6 +293,7 @@ export class ScreenshotsService {
       where: {
         timeEntryId,
       },
+      take: limit,
       orderBy: {
         timestamp: "desc",
       },

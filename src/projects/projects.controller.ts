@@ -158,6 +158,35 @@ export class ProjectsController {
     return this.projectsService.findActive(user.companyId);
   }
 
+  @Get(":id/budget-status")
+  @ApiOperation({
+    summary: "Статус бюджета проекта",
+    description:
+      "Возвращает использованный бюджет, оставшийся и процент использования",
+  })
+  @ApiParam({ name: "id", description: "ID проекта", type: String })
+  @ApiResponse({
+    status: 200,
+    description: "Статус бюджета",
+    schema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string" },
+        projectName: { type: "string" },
+        budget: { type: "number", nullable: true },
+        used: { type: "number", nullable: true },
+        remaining: { type: "number", nullable: true },
+        usedPercent: { type: "number", nullable: true },
+        entriesCount: { type: "number" },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: "Проект не найден" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getBudgetStatus(@Param("id") id: string, @GetUser() user: any) {
+    return this.projectsService.getBudgetStatus(id, user.companyId);
+  }
+
   @Get(":id")
   @ApiOperation({
     summary: "Получить проект по ID",

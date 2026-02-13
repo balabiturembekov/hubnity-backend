@@ -45,6 +45,7 @@ model User {
 
   company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   timeEntries         TimeEntry[]
+  approvedTimeEntries TimeEntry[]          @relation("ApprovedTimeEntries")
   activities          Activity[]
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
@@ -78,19 +79,24 @@ model Project {
 }
 
 model TimeEntry {
-  id          String      @id @default(uuid())
-  userId      String
-  projectId   String?
-  startTime   DateTime
-  endTime     DateTime?
-  duration    Int         @default(0) // in seconds
-  description String?
-  status      EntryStatus @default(RUNNING)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id               String          @id @default(uuid())
+  userId           String
+  projectId        String?
+  startTime        DateTime
+  endTime          DateTime?
+  duration         Int             @default(0) // in seconds
+  description      String?
+  status           EntryStatus     @default(RUNNING)
+  approvalStatus   ApprovalStatus  @default(PENDING)
+  approvedBy       String?
+  approvedAt       DateTime?
+  rejectionComment String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  approvedByUser User?       @relation("ApprovedTimeEntries", fields: [approvedBy], references: [id], onDelete: SetNull)
   screenshots   Screenshot[]
   appActivities AppActivity[]
   urlActivities UrlActivity[]
@@ -99,6 +105,7 @@ model TimeEntry {
   @@index([projectId])
   @@index([startTime])
   @@index([status])
+  @@index([approvalStatus])
   @@index([userId, status])
   @@index([userId, startTime])
   @@map("time_entries")
@@ -269,6 +276,12 @@ enum EntryStatus {
   RUNNING
   PAUSED
   STOPPED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum ActivityType {

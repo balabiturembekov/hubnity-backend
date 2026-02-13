@@ -2,14 +2,16 @@
 set -e
 
 echo "Waiting for PostgreSQL to start..."
-while ! nc -z postgres 5432; do
-  sleep 0.1
+until nc -z -w 2 postgres 5432 2>/dev/null; do
+  echo "  PostgreSQL not ready, waiting..."
+  sleep 2
 done
 echo "PostgreSQL started"
 
 echo "Waiting for Redis to start..."
-while ! nc -z redis 6379; do
-  sleep 0.1
+until nc -z -w 2 redis 6379 2>/dev/null; do
+  echo "  Redis not ready, waiting..."
+  sleep 2
 done
 echo "Redis started"
 

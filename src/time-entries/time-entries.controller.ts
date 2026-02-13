@@ -20,11 +20,17 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiQuery,
+  ApiBody,
 } from "@nestjs/swagger";
 import { TimeEntriesService } from "./time-entries.service";
 import { CreateTimeEntryDto } from "./dto/create-time-entry.dto";
 import { UpdateTimeEntryDto } from "./dto/update-time-entry.dto";
+import { RejectTimeEntryDto } from "./dto/reject-time-entry.dto";
+import { BulkApproveDto } from "./dto/bulk-approve.dto";
+import { BulkRejectDto } from "./dto/bulk-reject.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { GetUser } from "../auth/decorators/get-user.decorator";
 import { UserRole } from "@prisma/client";
 
@@ -136,6 +142,13 @@ export class TimeEntriesController {
     description: "ID проекта для фильтрации",
     type: String,
   })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Максимальное количество записей (максимум 1000, по умолчанию 100)",
+    type: Number,
+    example: 100,
+  })
   @ApiResponse({
     status: 200,
     description: "Список записей времени",
@@ -189,7 +202,16 @@ export class TimeEntriesController {
     @GetUser() user: any,
     @Query("userId") userId?: string,
     @Query("projectId") projectId?: string,
+    @Query("limit") limit?: string,
   ) {
+    let parsedLimit = 100;
+    if (limit) {
+      const parsed = parseInt(limit, 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 1000) {
+        parsedLimit = parsed;
+      }
+    }
+
     if (
       user.role !== UserRole.OWNER &&
       user.role !== UserRole.ADMIN &&
@@ -199,9 +221,15 @@ export class TimeEntriesController {
         user.companyId,
         user.id,
         projectId,
+        parsedLimit,
       );
     }
-    return this.timeEntriesService.findAll(user.companyId, userId, projectId);
+    return this.timeEntriesService.findAll(
+      user.companyId,
+      userId,
+      projectId,
+      parsedLimit,
+    );
   }
 
   @Get("active")
@@ -424,6 +452,179 @@ export class TimeEntriesController {
     );
   }
 
+  @Get("pending")
+  @ApiOperation({
+    summary: "Получить записи на утверждение",
+    description:
+      "Возвращает записи времени со статусом PENDING (остановленные, ожидающие утверждения). Админы могут фильтровать по userId.",
+  })
+  @ApiQuery({
+    name: "userId",
+    required: false,
+    description: "ID пользователя для фильтрации (только для админов)",
+    type: String,
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Максимальное количество записей (максимум 1000, по умолчанию 100)",
+    type: Number,
+    example: 100,
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Список записей на утверждение",
+    schema: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "uuid" },
+          userId: { type: "string", example: "uuid" },
+          projectId: { type: "string", nullable: true },
+          startTime: { type: "string", format: "date-time" },
+          endTime: { type: "string", format: "date-time", nullable: true },
+          duration: { type: "number", example: 3600 },
+          description: { type: "string", nullable: true },
+          status: { type: "string", enum: ["STOPPED"], example: "STOPPED" },
+          approvalStatus: {
+            type: "string",
+            enum: ["PENDING", "APPROVED", "REJECTED"],
+            example: "PENDING",
+          },
+          user: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              email: { type: "string" },
+            },
+          },
+          project: {
+            type: "object",
+            nullable: true,
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              color: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  findPending(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @GetUser() user: any,
+    @Query("userId") userId?: string,
+    @Query("limit") limit?: string,
+  ) {
+    if (
+      user.role !== UserRole.OWNER &&
+      user.role !== UserRole.ADMIN &&
+      user.role !== UserRole.SUPER_ADMIN
+    ) {
+      if (userId && userId !== user.id) {
+        throw new ForbiddenException(
+          "You can only view your own pending entries",
+        );
+      }
+      const effectiveUserId = user.id;
+      let parsedLimit = 100;
+      if (limit) {
+        const parsed = parseInt(limit, 10);
+        if (!isNaN(parsed) && parsed > 0 && parsed <= 1000) {
+          parsedLimit = parsed;
+        }
+      }
+      return this.timeEntriesService.findPending(
+        user.companyId,
+        effectiveUserId,
+        parsedLimit,
+      );
+    }
+    let parsedLimit = 100;
+    if (limit) {
+      const parsed = parseInt(limit, 10);
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 1000) {
+        parsedLimit = parsed;
+      }
+    }
+    return this.timeEntriesService.findPending(
+      user.companyId,
+      userId,
+      parsedLimit,
+    );
+  }
+
+  @Post("bulk-approve")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiBody({ type: BulkApproveDto })
+  @ApiOperation({
+    summary: "Массовое утверждение записей",
+    description: "Утверждает несколько записей времени. Доступно только для OWNER и ADMIN.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Результат массового утверждения",
+    schema: {
+      type: "object",
+      properties: {
+        approvedCount: { type: "number", example: 5 },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  bulkApprove(
+    @Body() dto: BulkApproveDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @GetUser() user: any,
+  ) {
+    return this.timeEntriesService.bulkApprove(
+      dto.ids,
+      user.companyId,
+      user.id,
+    );
+  }
+
+  @Post("bulk-reject")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiBody({ type: BulkRejectDto })
+  @ApiOperation({
+    summary: "Массовое отклонение записей",
+    description:
+      "Отклоняет несколько записей времени с опциональным комментарием. Доступно только для OWNER и ADMIN.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Результат массового отклонения",
+    schema: {
+      type: "object",
+      properties: {
+        rejectedCount: { type: "number", example: 3 },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  bulkReject(
+    @Body() dto: BulkRejectDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @GetUser() user: any,
+  ) {
+    return this.timeEntriesService.bulkReject(
+      dto.ids,
+      user.companyId,
+      user.id,
+      dto.rejectionComment,
+    );
+  }
+
   @Get(":id")
   @ApiOperation({
     summary: "Получить запись времени по ID",
@@ -547,6 +748,86 @@ export class TimeEntriesController {
       user.companyId,
       user.id,
       user.role,
+    );
+  }
+
+  @Post(":id/approve")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({
+    summary: "Утвердить запись времени",
+    description:
+      "Утверждает запись времени со статусом PENDING. Доступно только для OWNER и ADMIN.",
+  })
+  @ApiParam({ name: "id", description: "ID записи времени", type: String })
+  @ApiResponse({
+    status: 200,
+    description: "Запись времени успешно утверждена",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        approvalStatus: { type: "string", enum: ["APPROVED"], example: "APPROVED" },
+        approvedBy: { type: "string", example: "uuid" },
+        approvedAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: "Запись не в статусе PENDING" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  approve(
+    @Param("id") id: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @GetUser() user: any,
+  ) {
+    return this.timeEntriesService.approve(
+      id,
+      user.companyId,
+      user.id,
+    );
+  }
+
+  @Post(":id/reject")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiBody({ type: RejectTimeEntryDto })
+  @ApiOperation({
+    summary: "Отклонить запись времени",
+    description:
+      "Отклоняет запись времени со статусом PENDING с опциональным комментарием. Доступно только для OWNER и ADMIN.",
+  })
+  @ApiParam({ name: "id", description: "ID записи времени", type: String })
+  @ApiResponse({
+    status: 200,
+    description: "Запись времени успешно отклонена",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", example: "uuid" },
+        approvalStatus: { type: "string", enum: ["REJECTED"], example: "REJECTED" },
+        approvedBy: { type: "string", example: "uuid" },
+        approvedAt: { type: "string", format: "date-time" },
+        rejectionComment: { type: "string", nullable: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: "Запись не в статусе PENDING" })
+  @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
+  @ApiResponse({ status: 404, description: "Запись времени не найдена" })
+  reject(
+    @Param("id") id: string,
+    @Body() dto: RejectTimeEntryDto,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @GetUser() user: any,
+  ) {
+    return this.timeEntriesService.reject(
+      id,
+      user.companyId,
+      user.id,
+      dto.rejectionComment,
     );
   }
 

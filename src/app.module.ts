@@ -20,6 +20,7 @@ import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
 import { AppActivityModule } from "./app-activity/app-activity.module";
 import { UrlActivityModule } from "./url-activity/url-activity.module";
 import { BlockedUrlModule } from "./blocked-url/blocked-url.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 
 @Module({
   imports: [
@@ -120,6 +121,7 @@ import { BlockedUrlModule } from "./blocked-url/blocked-url.module";
     AppActivityModule,
     UrlActivityModule,
     BlockedUrlModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [

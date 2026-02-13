@@ -203,6 +203,7 @@ async function bootstrap() {
     .addTag("app-activity", "Отслеживание приложений")
     .addTag("url-activity", "Отслеживание URL")
     .addTag("blocked-urls", "Заблокированные URL")
+    .addTag("analytics", "Аналитика и отчёты")
     .addTag("health", "Проверка работоспособности")
     .build();
 
