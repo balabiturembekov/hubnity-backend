@@ -5,10 +5,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  AnalyticsQueryDto,
-  AnalyticsPeriod,
-} from "./dto/analytics-query.dto";
+import { AnalyticsQueryDto, AnalyticsPeriod } from "./dto/analytics-query.dto";
 import { Prisma } from "@prisma/client";
 
 @Injectable()
@@ -39,31 +36,95 @@ export class AnalyticsService {
 
     switch (period) {
       case AnalyticsPeriod.TODAY:
-        start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0,
+        );
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       case AnalyticsPeriod.YESTERDAY:
-        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+        start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() - 1,
+          0,
+          0,
+          0,
+          0,
+        );
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() - 1,
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       case AnalyticsPeriod.LAST_7_DAYS:
         start = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
         start.setHours(0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       case AnalyticsPeriod.LAST_30_DAYS:
         start = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
         start.setHours(0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       case AnalyticsPeriod.LAST_90_DAYS:
         start = new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000);
         start.setHours(0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       case AnalyticsPeriod.THIS_MONTH:
         start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       case AnalyticsPeriod.LAST_MONTH:
         start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
@@ -71,12 +132,28 @@ export class AnalyticsService {
         break;
       case AnalyticsPeriod.THIS_YEAR:
         start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
         break;
       default:
         start = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
         start.setHours(0, 0, 0, 0);
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        end = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          23,
+          59,
+          59,
+          999,
+        );
     }
     return { start, end };
   }
@@ -249,7 +326,13 @@ export class AnalyticsService {
 
     const byProject = new Map<
       string,
-      { projectId: string | null; projectName: string; projectColor: string; hours: number; earned: number }
+      {
+        projectId: string | null;
+        projectName: string;
+        projectColor: string;
+        hours: number;
+        earned: number;
+      }
     >();
 
     entries.forEach((e) => {
@@ -350,7 +433,10 @@ export class AnalyticsService {
     return {
       period: { startDate: start, endDate: end },
       totalHours: Math.round(totalHours * 100) / 100,
-      avgHoursPerDay: daysInPeriod > 0 ? Math.round((totalHours / daysInPeriod) * 100) / 100 : 0,
+      avgHoursPerDay:
+        daysInPeriod > 0
+          ? Math.round((totalHours / daysInPeriod) * 100) / 100
+          : 0,
       byUser: data,
     };
   }
@@ -385,10 +471,14 @@ export class AnalyticsService {
     };
 
     const isEmployee = userRole === "EMPLOYEE";
-    const effectiveUserId = isEmployee ? userId : period1.userId || period2.userId;
+    const effectiveUserId = isEmployee
+      ? userId
+      : period1.userId || period2.userId;
     if (effectiveUserId) {
       if (isEmployee && effectiveUserId !== userId) {
-        throw new ForbiddenException("Employees can only view their own analytics");
+        throw new ForbiddenException(
+          "Employees can only view their own analytics",
+        );
       }
       baseWhere1.userId = effectiveUserId;
       baseWhere2.userId = effectiveUserId;
@@ -415,8 +505,16 @@ export class AnalyticsService {
     const diffPercent = hours1 > 0 ? (diff / hours1) * 100 : 0;
 
     return {
-      period1: { startDate: start1, endDate: end1, hours: Math.round(hours1 * 100) / 100 },
-      period2: { startDate: start2, endDate: end2, hours: Math.round(hours2 * 100) / 100 },
+      period1: {
+        startDate: start1,
+        endDate: end1,
+        hours: Math.round(hours1 * 100) / 100,
+      },
+      period2: {
+        startDate: start2,
+        endDate: end2,
+        hours: Math.round(hours2 * 100) / 100,
+      },
       difference: Math.round(diff * 100) / 100,
       differencePercent: Math.round(diffPercent * 100) / 100,
     };
@@ -543,7 +641,12 @@ export class AnalyticsService {
 
     const appsMap = new Map<
       string,
-      { appName: string; windowTitle: string | null; timeSpentSeconds: number; timeSpentHours: number }
+      {
+        appName: string;
+        windowTitle: string | null;
+        timeSpentSeconds: number;
+        timeSpentHours: number;
+      }
     >();
     appActivities.forEach((a) => {
       const key = a.appName;
@@ -557,12 +660,19 @@ export class AnalyticsService {
       }
       const item = appsMap.get(key)!;
       item.timeSpentSeconds += a.timeSpent || 0;
-      item.timeSpentHours = Math.round((item.timeSpentSeconds / 3600) * 100) / 100;
+      item.timeSpentHours =
+        Math.round((item.timeSpentSeconds / 3600) * 100) / 100;
     });
 
     const urlsMap = new Map<
       string,
-      { domain: string; url: string; title: string | null; timeSpentSeconds: number; timeSpentHours: number }
+      {
+        domain: string;
+        url: string;
+        title: string | null;
+        timeSpentSeconds: number;
+        timeSpentHours: number;
+      }
     >();
     urlActivities.forEach((u) => {
       const key = u.domain + "|" + u.url;
@@ -577,7 +687,8 @@ export class AnalyticsService {
       }
       const item = urlsMap.get(key)!;
       item.timeSpentSeconds += u.timeSpent || 0;
-      item.timeSpentHours = Math.round((item.timeSpentSeconds / 3600) * 100) / 100;
+      item.timeSpentHours =
+        Math.round((item.timeSpentSeconds / 3600) * 100) / 100;
     });
 
     const apps = Array.from(appsMap.values())
@@ -616,7 +727,9 @@ export class AnalyticsService {
 
     const lines: string[] = [];
     lines.push("Hubnity Analytics Export");
-    lines.push(`Period,${dashboard.period.startDate.toISOString().split("T")[0]} - ${dashboard.period.endDate.toISOString().split("T")[0]}`);
+    lines.push(
+      `Period,${dashboard.period.startDate.toISOString().split("T")[0]} - ${dashboard.period.endDate.toISOString().split("T")[0]}`,
+    );
     lines.push("");
     lines.push("Summary");
     lines.push("Total Hours," + dashboard.totalHours);

@@ -1,9 +1,4 @@
-import {
-  IsOptional,
-  IsEnum,
-  IsDateString,
-  IsUUID,
-} from "class-validator";
+import { IsOptional, IsEnum, IsDateString, IsUUID } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { AnalyticsPeriod } from "./analytics-query.dto";
 
@@ -58,7 +53,9 @@ export class CompareQueryDto {
   @IsDateString()
   endDate2?: string;
 
-  @ApiPropertyOptional({ description: "ID пользователя (общий для обоих периодов)" })
+  @ApiPropertyOptional({
+    description: "ID пользователя (общий для обоих периодов)",
+  })
   @IsOptional()
   @IsUUID()
   userId?: string;

@@ -385,11 +385,7 @@ export class TimeEntriesService {
     return entry;
   }
 
-  async findPending(
-    companyId: string,
-    userId?: string,
-    limit: number = 100,
-  ) {
+  async findPending(companyId: string, userId?: string, limit: number = 100) {
     const where: {
       user: { companyId: string };
       userId?: string;
@@ -446,9 +442,7 @@ export class TimeEntriesService {
     });
 
     if (!entry) {
-      throw new NotFoundException(
-        `Time entry with ID ${entryId} not found`,
-      );
+      throw new NotFoundException(`Time entry with ID ${entryId} not found`);
     }
 
     if (entry.approvalStatus !== "PENDING") {
@@ -502,9 +496,7 @@ export class TimeEntriesService {
     });
 
     if (!entry) {
-      throw new NotFoundException(
-        `Time entry with ID ${entryId} not found`,
-      );
+      throw new NotFoundException(`Time entry with ID ${entryId} not found`);
     }
 
     if (entry.approvalStatus !== "PENDING") {
@@ -544,11 +536,7 @@ export class TimeEntriesService {
     return updated;
   }
 
-  async bulkApprove(
-    ids: string[],
-    companyId: string,
-    approverId: string,
-  ) {
+  async bulkApprove(ids: string[], companyId: string, approverId: string) {
     const result = await this.prisma.timeEntry.updateMany({
       where: {
         id: { in: ids },

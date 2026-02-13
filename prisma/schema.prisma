@@ -79,27 +79,27 @@ model Project {
 }
 
 model TimeEntry {
-  id               String          @id @default(uuid())
+  id               String         @id @default(uuid())
   userId           String
   projectId        String?
   startTime        DateTime
   endTime          DateTime?
-  duration         Int             @default(0) // in seconds
+  duration         Int            @default(0) // in seconds
   description      String?
-  status           EntryStatus     @default(RUNNING)
-  approvalStatus   ApprovalStatus  @default(PENDING)
+  status           EntryStatus    @default(RUNNING)
+  approvalStatus   ApprovalStatus @default(PENDING)
   approvedBy       String?
   approvedAt       DateTime?
   rejectionComment String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  approvedByUser User?       @relation("ApprovedTimeEntries", fields: [approvedBy], references: [id], onDelete: SetNull)
-  screenshots   Screenshot[]
-  appActivities AppActivity[]
-  urlActivities UrlActivity[]
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  approvedByUser User?         @relation("ApprovedTimeEntries", fields: [approvedBy], references: [id], onDelete: SetNull)
+  screenshots    Screenshot[]
+  appActivities  AppActivity[]
+  urlActivities  UrlActivity[]
 
   @@index([userId])
   @@index([projectId])

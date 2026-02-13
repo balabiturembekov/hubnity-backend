@@ -69,8 +69,7 @@ describe("TimeEntriesController", () => {
     }).compile();
 
     controller = module.get<TimeEntriesController>(TimeEntriesController);
-    timeEntriesService =
-      module.get<TimeEntriesService>(TimeEntriesService);
+    timeEntriesService = module.get<TimeEntriesService>(TimeEntriesService);
 
     jest.clearAllMocks();
   });
@@ -111,12 +110,7 @@ describe("TimeEntriesController", () => {
     it("should pass limit to service when provided (admin)", async () => {
       mockTimeEntriesService.findAll.mockResolvedValue(mockEntries);
 
-      await controller.findAll(
-        mockAdmin,
-        "target-user-id",
-        "project-id",
-        "25",
-      );
+      await controller.findAll(mockAdmin, "target-user-id", "project-id", "25");
 
       expect(timeEntriesService.findAll).toHaveBeenCalledWith(
         mockAdmin.companyId,
@@ -183,7 +177,9 @@ describe("TimeEntriesController", () => {
     const mockPendingEntries = mockTimeEntry;
 
     it("should return pending entries for admin", async () => {
-      mockTimeEntriesService.findPending.mockResolvedValue([mockPendingEntries]);
+      mockTimeEntriesService.findPending.mockResolvedValue([
+        mockPendingEntries,
+      ]);
 
       const result = await controller.findPending(mockAdmin, undefined, "50");
 
@@ -196,7 +192,9 @@ describe("TimeEntriesController", () => {
     });
 
     it("should filter by userId when admin provides it", async () => {
-      mockTimeEntriesService.findPending.mockResolvedValue([mockPendingEntries]);
+      mockTimeEntriesService.findPending.mockResolvedValue([
+        mockPendingEntries,
+      ]);
 
       await controller.findPending(mockAdmin, "target-user-id", "25");
 
@@ -208,7 +206,9 @@ describe("TimeEntriesController", () => {
     });
 
     it("should return only own pending entries for employee", async () => {
-      mockTimeEntriesService.findPending.mockResolvedValue([mockPendingEntries]);
+      mockTimeEntriesService.findPending.mockResolvedValue([
+        mockPendingEntries,
+      ]);
 
       await controller.findPending(mockUser, undefined, "100");
 
@@ -259,7 +259,9 @@ describe("TimeEntriesController", () => {
 
   describe("reject", () => {
     const entryId = "entry-id";
-    const dto: RejectTimeEntryDto = { rejectionComment: "Недостаточно деталей" };
+    const dto: RejectTimeEntryDto = {
+      rejectionComment: "Недостаточно деталей",
+    };
     const rejectedEntry = { ...mockTimeEntry, approvalStatus: "REJECTED" };
 
     it("should reject time entry with comment for admin", async () => {

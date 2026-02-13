@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsArray, IsOptional, IsString, IsUUID, MaxLength, ArrayMinSize } from "class-validator";
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  ArrayMinSize,
+} from "class-validator";
 
 export class BulkRejectDto {
   @ApiProperty({

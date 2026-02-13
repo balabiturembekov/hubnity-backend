@@ -211,7 +211,9 @@ describe("AnalyticsService", () => {
 
       expect(result).toHaveProperty("csv");
       expect(result).toHaveProperty("filename");
-      expect(result.filename).toMatch(/^hubnity-analytics-\d{4}-\d{2}-\d{2}\.csv$/);
+      expect(result.filename).toMatch(
+        /^hubnity-analytics-\d{4}-\d{2}-\d{2}\.csv$/,
+      );
       expect(result.csv).toContain("Hubnity Analytics Export");
       expect(result.csv).toContain("Total Hours");
       expect(result.csv).toContain("Hours by Day");

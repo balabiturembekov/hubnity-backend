@@ -115,7 +115,8 @@ export class ScreenshotsController {
   @ApiQuery({
     name: "limit",
     required: false,
-    description: "Максимальное количество скриншотов (максимум 1000, по умолчанию 100)",
+    description:
+      "Максимальное количество скриншотов (максимум 1000, по умолчанию 100)",
     type: Number,
     example: 100,
   })

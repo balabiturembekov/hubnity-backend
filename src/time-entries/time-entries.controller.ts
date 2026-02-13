@@ -145,7 +145,8 @@ export class TimeEntriesController {
   @ApiQuery({
     name: "limit",
     required: false,
-    description: "Максимальное количество записей (максимум 1000, по умолчанию 100)",
+    description:
+      "Максимальное количество записей (максимум 1000, по умолчанию 100)",
     type: Number,
     example: 100,
   })
@@ -467,7 +468,8 @@ export class TimeEntriesController {
   @ApiQuery({
     name: "limit",
     required: false,
-    description: "Максимальное количество записей (максимум 1000, по умолчанию 100)",
+    description:
+      "Максимальное количество записей (максимум 1000, по умолчанию 100)",
     type: Number,
     example: 100,
   })
@@ -565,7 +567,8 @@ export class TimeEntriesController {
   @ApiBody({ type: BulkApproveDto })
   @ApiOperation({
     summary: "Массовое утверждение записей",
-    description: "Утверждает несколько записей времени. Доступно только для OWNER и ADMIN.",
+    description:
+      "Утверждает несколько записей времени. Доступно только для OWNER и ADMIN.",
   })
   @ApiResponse({
     status: 200,
@@ -767,7 +770,11 @@ export class TimeEntriesController {
       type: "object",
       properties: {
         id: { type: "string", example: "uuid" },
-        approvalStatus: { type: "string", enum: ["APPROVED"], example: "APPROVED" },
+        approvalStatus: {
+          type: "string",
+          enum: ["APPROVED"],
+          example: "APPROVED",
+        },
         approvedBy: { type: "string", example: "uuid" },
         approvedAt: { type: "string", format: "date-time" },
       },
@@ -782,11 +789,7 @@ export class TimeEntriesController {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @GetUser() user: any,
   ) {
-    return this.timeEntriesService.approve(
-      id,
-      user.companyId,
-      user.id,
-    );
+    return this.timeEntriesService.approve(id, user.companyId, user.id);
   }
 
   @Post(":id/reject")
@@ -806,7 +809,11 @@ export class TimeEntriesController {
       type: "object",
       properties: {
         id: { type: "string", example: "uuid" },
-        approvalStatus: { type: "string", enum: ["REJECTED"], example: "REJECTED" },
+        approvalStatus: {
+          type: "string",
+          enum: ["REJECTED"],
+          example: "REJECTED",
+        },
         approvedBy: { type: "string", example: "uuid" },
         approvedAt: { type: "string", format: "date-time" },
         rejectionComment: { type: "string", nullable: true },

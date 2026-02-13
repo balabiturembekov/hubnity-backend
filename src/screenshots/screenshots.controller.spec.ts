@@ -52,8 +52,7 @@ describe("ScreenshotsController", () => {
     }).compile();
 
     controller = module.get<ScreenshotsController>(ScreenshotsController);
-    screenshotsService =
-      module.get<ScreenshotsService>(ScreenshotsService);
+    screenshotsService = module.get<ScreenshotsService>(ScreenshotsService);
 
     jest.clearAllMocks();
   });
