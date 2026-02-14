@@ -1,0 +1,76 @@
+# Deployment + Service для PostgreSQL (PVC создаётся в postgres-pv-pvc.yaml)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hubnity-postgres
+  namespace: hubnity
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hubnity-postgres
+  template:
+    metadata:
+      labels:
+        app: hubnity-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: hubnity-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: hubnity-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hubnity-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hubnity-postgres
+  namespace: hubnity
+spec:
+  selector:
+    app: hubnity-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

@@ -1,0 +1,28 @@
+# PV/PVC для Redis — использует существующие данные из Docker volume
+# Путь: /var/lib/docker/volumes/timetracker-redis-data/_data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hubnity-redis-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /var/lib/docker/volumes/timetracker-redis-data/_data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: hubnity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: hubnity-redis-pv

@@ -1,0 +1,28 @@
+# PV/PVC для PostgreSQL — использует существующие данные из Docker volume
+# Путь: /var/lib/docker/volumes/timetracker-postgres-data/_data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hubnity-postgres-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /var/lib/docker/volumes/timetracker-postgres-data/_data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: hubnity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: hubnity-postgres-pv

@@ -1,0 +1,28 @@
+# PV/PVC для uploads (скриншоты) — использует существующие данные из Docker volume
+# Путь: /var/lib/docker/volumes/timetracker-uploads-data/_data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hubnity-uploads-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /var/lib/docker/volumes/timetracker-uploads-data/_data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads-pvc
+  namespace: hubnity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: hubnity-uploads-pv
