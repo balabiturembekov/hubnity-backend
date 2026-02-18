@@ -145,6 +145,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async invalidateCompanySettings(companyId: string): Promise<void> {
     await this.del(`company:${companyId}:settings`);
     await this.del(`company:${companyId}:tracking-settings`);
+    await this.del(`company:${companyId}:profile`);
   }
 
   async invalidateStats(companyId: string): Promise<void> {
