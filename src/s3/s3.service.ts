@@ -1,9 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  HeadBucketCommand,
+  CreateBucketCommand,
 } from "@aws-sdk/client-s3";
 
 /**
@@ -11,7 +13,7 @@ import {
  * When S3_ENABLED is false, all methods no-op and return null.
  */
 @Injectable()
-export class S3Service {
+export class S3Service implements OnModuleInit {
   private readonly logger = new Logger(S3Service.name);
   private readonly client: S3Client | null = null;
   private readonly bucket: string;
@@ -63,6 +65,33 @@ export class S3Service {
 
   isEnabled(): boolean {
     return this.enabled && this.client !== null;
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (!this.client || !this.enabled) return;
+    await this.ensureBucketExists();
+  }
+
+  /**
+   * Create bucket if it doesn't exist (Minio doesn't auto-create buckets).
+   */
+  private async ensureBucketExists(): Promise<void> {
+    try {
+      await this.client!.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      this.logger.debug(`S3 bucket ${this.bucket} exists`);
+    } catch {
+      try {
+        await this.client!.send(new CreateBucketCommand({ Bucket: this.bucket }));
+        this.logger.log(`S3 bucket ${this.bucket} created`);
+      } catch (createErr) {
+        const msg = createErr instanceof Error ? createErr.message : String(createErr);
+        if (msg.includes("BucketAlreadyOwnedByYou") || msg.includes("BucketAlreadyExists")) {
+          this.logger.debug(`S3 bucket ${this.bucket} already exists`);
+        } else {
+          this.logger.error({ bucket: this.bucket, error: createErr }, "Failed to create S3 bucket");
+        }
+      }
+    }
   }
 
   /**

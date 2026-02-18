@@ -396,13 +396,18 @@ SCREENSHOT_ENTRY=$(curl -s -X POST "$BASE/time-entries" \
 SCREENSHOT_ENTRY_ID=$(echo "$SCREENSHOT_ENTRY" | jq -r '.id // empty' 2>/dev/null || echo "$SCREENSHOT_ENTRY" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
 if [ -n "$SCREENSHOT_ENTRY_ID" ]; then
   echo "5.1 POST /screenshots — Upload small Base64 payload"
+  SCREENSHOT_JSON=$(jq -n --arg te "$SCREENSHOT_ENTRY_ID" --arg img "$SMALL_PNG_BASE64" '{timeEntryId:$te,imageData:$img}' 2>/dev/null || echo "{\"timeEntryId\":\"$SCREENSHOT_ENTRY_ID\",\"imageData\":\"$SMALL_PNG_BASE64\"}")
   SCREENSHOT_RESP=$(curl -s -w "\n__HTTP__%{http_code}" -X POST "$BASE/screenshots" \
     -H "Authorization: Bearer $TOKEN_EMPLOYEE" \
     -H "Content-Type: application/json" \
-    -d "{\"timeEntryId\":\"$SCREENSHOT_ENTRY_ID\",\"imageData\":\"$SMALL_PNG_BASE64\"}")
+    -d "$SCREENSHOT_JSON")
   SCREENSHOT_STATUS=$(echo "$SCREENSHOT_RESP" | grep '__HTTP__' | sed 's/.*__HTTP__//')
-  assert_status "$SCREENSHOT_STATUS" "201" "Screenshot upload -> 201" || true
-  assert_json_contains "$(echo "$SCREENSHOT_RESP" | sed '/__HTTP__/d')" "imageUrl" "Response has imageUrl" || true
+  SCREENSHOT_BODY=$(echo "$SCREENSHOT_RESP" | sed '/__HTTP__/d')
+  if [ "$SCREENSHOT_STATUS" != "201" ]; then
+    echo "    [Response $SCREENSHOT_STATUS]: $SCREENSHOT_BODY"
+  fi
+  assert_status "$SCREENSHOT_STATUS" "201" "Screenshot upload -> 201" "$SCREENSHOT_BODY" || true
+  assert_json_contains "$SCREENSHOT_BODY" "imageUrl" "Response has imageUrl" || true
   # Stop the entry for cleanup
   curl -s -X PUT "$BASE/time-entries/$SCREENSHOT_ENTRY_ID/stop" -H "Authorization: Bearer $TOKEN_EMPLOYEE" >/dev/null
 else
