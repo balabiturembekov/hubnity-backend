@@ -126,10 +126,10 @@ export class BlockedUrlController {
   }
 
   @Delete(":id")
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: "Удалить заблокированный URL",
-    description: "Удаляет правило блокировки URL. Только для администраторов.",
+    description: "Удаляет правило блокировки URL. Только для администраторов. REST-style: 204 No Content.",
   })
   @ApiParam({
     name: "id",
@@ -137,14 +137,8 @@ export class BlockedUrlController {
     type: String,
   })
   @ApiResponse({
-    status: 200,
+    status: 204,
     description: "Заблокированный URL успешно удален",
-    schema: {
-      type: "object",
-      properties: {
-        success: { type: "boolean", example: true },
-      },
-    },
   })
   @ApiResponse({
     status: 403,
@@ -162,6 +156,6 @@ export class BlockedUrlController {
     if (!isUUID(id)) {
       throw new BadRequestException("Invalid blocked URL ID format");
     }
-    return this.blockedUrlService.delete(id, user.companyId, user.role);
+    await this.blockedUrlService.delete(id, user.companyId, user.role);
   }
 }

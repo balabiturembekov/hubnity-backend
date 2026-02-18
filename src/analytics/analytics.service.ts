@@ -268,11 +268,34 @@ export class AnalyticsService {
       query,
     );
 
-    const entries = await this.prisma.timeEntry.findMany({
-      where,
-      select: { startTime: true, duration: true },
-      take: 10000,
-    });
+    // Build raw query conditions from Prisma where
+    const conditions: string[] = ['te."userId" IN (SELECT id FROM users WHERE "companyId" = $1)', 'te.status = \'STOPPED\'', 'te."startTime" >= $2', 'te."startTime" <= $3'];
+    const params: (string | Date)[] = [companyId, start, end];
+    let paramIdx = 4;
+    if (where.userId) {
+      conditions.push(`te."userId" = $${paramIdx}`);
+      params.push(where.userId as string);
+      paramIdx++;
+    }
+    if (where.projectId) {
+      conditions.push(`te."projectId" = $${paramIdx}`);
+      params.push(where.projectId as string);
+      paramIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+    const rawResult = await this.prisma.$queryRawUnsafe<
+      { date: Date; total_seconds: bigint }[]
+    >(
+      `SELECT
+         (te."startTime" AT TIME ZONE COALESCE(NULLIF(te.timezone, ''), 'UTC'))::date as date,
+         COALESCE(SUM(te.duration), 0)::bigint as total_seconds
+       FROM time_entries te
+       WHERE ${whereClause}
+       GROUP BY (te."startTime" AT TIME ZONE COALESCE(NULLIF(te.timezone, ''), 'UTC'))::date
+       ORDER BY date`,
+      ...params,
+    );
 
     const byDay = new Map<string, number>();
     const current = new Date(start);
@@ -282,11 +305,11 @@ export class AnalyticsService {
       current.setDate(current.getDate() + 1);
     }
 
-    entries.forEach((e) => {
-      const date = new Date(e.startTime);
-      const key = date.toISOString().split("T")[0];
+    rawResult.forEach((row) => {
+      const key = new Date(row.date).toISOString().split("T")[0];
       if (byDay.has(key)) {
-        byDay.set(key, byDay.get(key)! + (e.duration || 0) / 3600);
+        const seconds = Number(row.total_seconds);
+        byDay.set(key, seconds / 3600);
       }
     });
 
@@ -615,6 +638,8 @@ export class AnalyticsService {
     if (effectiveUserId) timeEntryWhere.userId = effectiveUserId;
     if (query.projectId) timeEntryWhere.projectId = query.projectId;
 
+    // BUG-9: Hard limit to prevent OOM when companies accumulate large data
+    const appsUrlsLimit = 5000;
     const [appActivities, urlActivities] = await Promise.all([
       this.prisma.appActivity.findMany({
         where: {
@@ -625,6 +650,7 @@ export class AnalyticsService {
           windowTitle: true,
           timeSpent: true,
         },
+        take: appsUrlsLimit,
       }),
       this.prisma.urlActivity.findMany({
         where: {
@@ -636,6 +662,7 @@ export class AnalyticsService {
           title: true,
           timeSpent: true,
         },
+        take: appsUrlsLimit,
       }),
     ]);
 

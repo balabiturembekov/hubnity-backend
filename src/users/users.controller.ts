@@ -123,8 +123,9 @@ export class UsersController {
 
   @Get("me")
   @ApiOperation({
-    summary: "Получить свой профиль",
-    description: "Возвращает информацию о текущем пользователе",
+    summary: "Получить свой профиль (Hubstaff-style)",
+    description:
+      "Возвращает полную информацию о текущем пользователе. Основной эндпоинт для получения профиля (аналог Hubstaff GET /users/me).",
   })
   @ApiResponse({
     status: 200,

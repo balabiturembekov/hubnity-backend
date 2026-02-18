@@ -15,12 +15,16 @@ import { EventsModule } from "./events/events.module";
 import { ScreenshotsModule } from "./screenshots/screenshots.module";
 import { TeamActivityModule } from "./team-activity/team-activity.module";
 import { CompaniesModule } from "./companies/companies.module";
+import { OrganizationsModule } from "./organizations/organizations.module";
 import { CacheModule } from "./cache/cache.module";
 import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
 import { AppActivityModule } from "./app-activity/app-activity.module";
 import { UrlActivityModule } from "./url-activity/url-activity.module";
 import { BlockedUrlModule } from "./blocked-url/blocked-url.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { MailerModule } from "./mailer/mailer.module";
+import { InvitationsModule } from "./invitations/invitations.module";
 
 @Module({
   imports: [
@@ -117,11 +121,15 @@ import { AnalyticsModule } from "./analytics/analytics.module";
     ScreenshotsModule,
     TeamActivityModule,
     CompaniesModule,
+    OrganizationsModule,
     IdleDetectionModule,
     AppActivityModule,
     UrlActivityModule,
     BlockedUrlModule,
     AnalyticsModule,
+    NotificationsModule,
+    MailerModule,
+    InvitationsModule,
   ],
   controllers: [AppController],
   providers: [

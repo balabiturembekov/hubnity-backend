@@ -23,6 +23,7 @@ describe("AnalyticsService", () => {
     urlActivity: {
       findMany: jest.fn(),
     },
+    $queryRawUnsafe: jest.fn(),
   };
 
   const mockTimeEntry = {
@@ -186,21 +187,17 @@ describe("AnalyticsService", () => {
     const query: AnalyticsQueryDto = { period: AnalyticsPeriod.LAST_7_DAYS };
 
     it("should return csv string and filename", async () => {
-      mockPrismaService.timeEntry.findMany
-        .mockResolvedValueOnce([
-          {
-            duration: 3600,
-            userId: "user-id",
-            projectId: "project-id",
-            user: { hourlyRate: 50 },
-          },
-        ])
-        .mockResolvedValueOnce([
-          {
-            startTime: new Date("2025-01-15"),
-            duration: 3600,
-          },
-        ]);
+      mockPrismaService.timeEntry.findMany.mockResolvedValue([
+        {
+          duration: 3600,
+          userId: "user-id",
+          projectId: "project-id",
+          user: { hourlyRate: 50 },
+        },
+      ]);
+      mockPrismaService.$queryRawUnsafe.mockResolvedValue([
+        { date: new Date("2025-01-15"), total_seconds: BigInt(3600) },
+      ]);
 
       const result = await service.exportToCsv(
         companyId,

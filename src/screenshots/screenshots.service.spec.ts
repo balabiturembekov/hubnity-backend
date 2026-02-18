@@ -2,10 +2,18 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException } from "@nestjs/common";
 import { ScreenshotsService } from "./screenshots.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { S3Service } from "../s3/s3.service";
 import { PinoLogger } from "nestjs-pino";
 
 describe("ScreenshotsService", () => {
   let service: ScreenshotsService;
+
+  const mockS3Service = {
+    isEnabled: jest.fn().mockReturnValue(false),
+    uploadBuffer: jest.fn(),
+    deleteObject: jest.fn(),
+    extractKeyFromUrl: jest.fn(),
+  };
 
   const mockPrismaService = {
     $transaction: jest.fn(),
@@ -37,6 +45,10 @@ describe("ScreenshotsService", () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: S3Service,
+          useValue: mockS3Service,
         },
         {
           provide: PinoLogger,

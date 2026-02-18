@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CacheService } from "../cache/cache.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { UsersService } from "./users.service";
 import { UserRole, UserStatus } from "@prisma/client";
 import * as bcrypt from "bcrypt";
@@ -38,6 +39,11 @@ describe("UsersService", () => {
     invalidateUsers: jest.fn(),
   };
 
+  const mockNotificationsService = {
+    create: jest.fn(),
+    createForUsers: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +55,10 @@ describe("UsersService", () => {
         {
           provide: CacheService,
           useValue: mockCacheService,
+        },
+        {
+          provide: NotificationsService,
+          useValue: mockNotificationsService,
         },
       ],
     }).compile();
@@ -91,6 +101,7 @@ describe("UsersService", () => {
         return callback(mockPrismaService);
       });
       mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findMany.mockResolvedValue([]);
       mockPrismaService.user.create.mockResolvedValue(mockUser);
     });
 

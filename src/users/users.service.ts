@@ -4,9 +4,12 @@ import {
   ForbiddenException,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CacheService } from "../cache/cache.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { ScreenshotsService } from "../screenshots/screenshots.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UserRole } from "@prisma/client";
@@ -14,9 +17,13 @@ import * as bcrypt from "bcrypt";
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private prisma: PrismaService,
     private cache: CacheService,
+    private notificationsService: NotificationsService,
+    private screenshotsService: ScreenshotsService,
   ) {}
 
   async create(dto: CreateUserDto, companyId: string, creatorRole: UserRole) {
@@ -169,6 +176,34 @@ export class UsersService {
     });
 
     await this.cache.invalidateUsers(companyId);
+
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: {
+          companyId,
+          role: { in: [UserRole.OWNER, UserRole.ADMIN] },
+          status: "ACTIVE",
+        },
+        select: { id: true },
+      });
+      const adminIds = admins.map((a) => a.id);
+      if (adminIds.length > 0) {
+        await this.notificationsService.createForUsers(
+          adminIds,
+          companyId,
+          "USER_ADDED",
+          "Новый сотрудник добавлен",
+          `${user.name} (${user.email}) добавлен в компанию.`,
+          { userId: user.id, userName: user.name },
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        { err, userId: user.id, companyId },
+        "Failed to create user-added notification",
+      );
+    }
+
     return user;
   }
 
@@ -548,6 +583,9 @@ export class UsersService {
           `Cannot delete user with active time entries. Please stop all running/paused timers first (${activeEntries.length} active timer${activeEntries.length > 1 ? "s" : ""}).`,
         );
       }
+
+      // BUG-7: Delete S3/local files before cascade deletes Screenshot rows
+      await this.screenshotsService.deleteFilesForUser(id);
 
       return tx.user.delete({
         where: { id },

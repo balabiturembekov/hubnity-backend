@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PinoLogger } from "nestjs-pino";
 import { PrismaService } from "../prisma/prisma.service";
+import { S3Service } from "../s3/s3.service";
 import * as fs from "fs/promises";
 import * as fsSync from "fs";
 import * as path from "path";
@@ -20,6 +21,7 @@ export class ScreenshotsService {
 
   constructor(
     private prisma: PrismaService,
+    private s3Service: S3Service,
     private logger: PinoLogger,
   ) {
     this.logger.setContext(ScreenshotsService.name);
@@ -96,9 +98,9 @@ export class ScreenshotsService {
       throw new BadRequestException("Invalid image data");
     }
 
-    const maxBase64Length = 50 * 1024 * 1024;
+    const maxBase64Length = 10 * 1024 * 1024;
     if (dto.imageData.length > maxBase64Length) {
-      throw new BadRequestException("Image data exceeds maximum size (50MB)");
+      throw new BadRequestException("Image data exceeds maximum size (10MB)");
     }
 
     const base64Data = dto.imageData.replace(
@@ -122,10 +124,10 @@ export class ScreenshotsService {
         throw new BadRequestException("Failed to decode base64 image data");
       }
 
-      const maxBufferSize = 50 * 1024 * 1024;
+      const maxBufferSize = 10 * 1024 * 1024;
       if (imageBuffer.length > maxBufferSize) {
         throw new BadRequestException(
-          "Image buffer exceeds maximum size (50MB)",
+          "Image buffer exceeds maximum size (10MB)",
         );
       }
 
@@ -134,7 +136,7 @@ export class ScreenshotsService {
       }
 
       const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-      const filepath = path.join(this.uploadsDir, filename);
+      const thumbnailFilename = `thumb-${filename}`;
 
       let imageMetadata: sharp.Metadata;
       try {
@@ -171,11 +173,6 @@ export class ScreenshotsService {
         throw new BadRequestException("Failed to process image");
       }
 
-      await fs.writeFile(filepath, processedImage);
-
-      const thumbnailFilename = `thumb-${filename}`;
-      const thumbnailPath = path.join(this.thumbnailsDir, thumbnailFilename);
-
       let thumbnail: Buffer;
       try {
         thumbnail = await sharp(imageBuffer)
@@ -187,35 +184,48 @@ export class ScreenshotsService {
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
         this.logger.error(
-          { error: errorMessage, stack: errorStack },
+          { error: errorMessage },
           "Error generating thumbnail",
         );
-        try {
-          await fs.unlink(filepath);
-        } catch (deleteError: unknown) {
-          const deleteErrorMessage =
-            deleteError instanceof Error
-              ? deleteError.message
-              : String(deleteError);
-          const deleteErrorStack =
-            deleteError instanceof Error ? deleteError.stack : undefined;
-          this.logger.error(
-            { error: deleteErrorMessage, stack: deleteErrorStack },
-            "Failed to cleanup image file after thumbnail error",
-          );
-        }
         throw new BadRequestException("Failed to generate thumbnail");
       }
 
-      await fs.writeFile(thumbnailPath, thumbnail);
+      let imageUrl: string;
+      let thumbnailUrl: string | null = null;
+
+      if (this.s3Service.isEnabled()) {
+        const s3ImageKey = `screenshots/${filename}`;
+        const s3ThumbKey = `thumbnails/${thumbnailFilename}`;
+        const uploadedImageUrl = await this.s3Service.uploadBuffer(
+          s3ImageKey,
+          processedImage,
+          "image/jpeg",
+        );
+        const uploadedThumbUrl = await this.s3Service.uploadBuffer(
+          s3ThumbKey,
+          thumbnail,
+          "image/jpeg",
+        );
+        if (!uploadedImageUrl) {
+          throw new BadRequestException("S3 upload failed");
+        }
+        imageUrl = uploadedImageUrl;
+        thumbnailUrl = uploadedThumbUrl;
+      } else {
+        const filepath = path.join(this.uploadsDir, filename);
+        const thumbnailPath = path.join(this.thumbnailsDir, thumbnailFilename);
+        await fs.writeFile(filepath, processedImage);
+        await fs.writeFile(thumbnailPath, thumbnail);
+        imageUrl = `/uploads/screenshots/${filename}`;
+        thumbnailUrl = `/uploads/thumbnails/${thumbnailFilename}`;
+      }
 
       const screenshot = await this.prisma.screenshot.create({
         data: {
           timeEntryId: dto.timeEntryId,
-          imageUrl: `/uploads/screenshots/${filename}`,
-          thumbnailUrl: `/uploads/thumbnails/${thumbnailFilename}`,
+          imageUrl,
+          thumbnailUrl,
           timestamp: new Date(),
         },
         include: {
@@ -300,6 +310,102 @@ export class ScreenshotsService {
     });
   }
 
+  /**
+   * Delete S3 objects and local files for all screenshots of a time entry.
+   * Call BEFORE deleting a TimeEntry (or User) to avoid orphaned files on cascade.
+   * BUG-7 fix: Ensures S3/local cleanup even when Screenshot is cascade-deleted.
+   */
+  async deleteFilesForTimeEntry(timeEntryId: string): Promise<void> {
+    const screenshots = await this.prisma.screenshot.findMany({
+      where: { timeEntryId },
+      select: { id: true, imageUrl: true, thumbnailUrl: true },
+    });
+
+    for (const screenshot of screenshots) {
+      await this.deleteFilesForScreenshot(screenshot);
+    }
+  }
+
+  /**
+   * Delete S3 objects and local files for all screenshots belonging to a user's time entries.
+   * Call BEFORE deleting a User to avoid orphaned files on cascade.
+   */
+  async deleteFilesForUser(userId: string): Promise<void> {
+    const screenshots = await this.prisma.screenshot.findMany({
+      where: { timeEntry: { userId } },
+      select: { id: true, imageUrl: true, thumbnailUrl: true },
+    });
+
+    for (const screenshot of screenshots) {
+      await this.deleteFilesForScreenshot(screenshot);
+    }
+  }
+
+  private async deleteFilesForScreenshot(screenshot: {
+    imageUrl: string;
+    thumbnailUrl: string | null;
+  }): Promise<void> {
+    try {
+      if (this.s3Service.isEnabled()) {
+        const imageKey = this.s3Service.extractKeyFromUrl(screenshot.imageUrl);
+        const thumbKey = screenshot.thumbnailUrl
+          ? this.s3Service.extractKeyFromUrl(screenshot.thumbnailUrl)
+          : null;
+        if (imageKey) await this.s3Service.deleteObject(imageKey);
+        if (thumbKey) await this.s3Service.deleteObject(thumbKey);
+      } else {
+        const imagePath = this.normalizeAndValidatePath(
+          screenshot.imageUrl,
+          this.uploadsDir,
+        );
+        const thumbnailPath = screenshot.thumbnailUrl
+          ? this.normalizeAndValidatePath(
+              screenshot.thumbnailUrl,
+              this.thumbnailsDir,
+            )
+          : null;
+        if (imagePath && fsSync.existsSync(imagePath)) {
+          await fs.unlink(imagePath);
+        }
+        if (thumbnailPath && fsSync.existsSync(thumbnailPath)) {
+          await fs.unlink(thumbnailPath);
+        }
+      }
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        { error: errorMessage, imageUrl: screenshot.imageUrl },
+        "Error deleting screenshot files (continuing)",
+      );
+    }
+  }
+
+  private normalizeAndValidatePath(
+    fileUrl: string,
+    expectedDir: string,
+  ): string | null {
+    if (!fileUrl) return null;
+    if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+      return null;
+    }
+    const normalizedUrl = fileUrl.startsWith("/")
+      ? fileUrl.substring(1)
+      : fileUrl;
+    const resolvedPath = path.resolve(process.cwd(), normalizedUrl);
+    const expectedDirPath = path.resolve(expectedDir);
+    if (
+      !resolvedPath.startsWith(expectedDirPath + path.sep) &&
+      resolvedPath !== expectedDirPath
+    ) {
+      this.logger.warn(
+        `Path traversal attempt detected: ${fileUrl} resolved to ${resolvedPath}`,
+      );
+      return null;
+    }
+    return resolvedPath;
+  }
+
   async delete(screenshotId: string, companyId: string, userId: string) {
     // Perform deletion within transaction to ensure atomicity and verify companyId
     await this.prisma.$transaction(async (tx) => {
@@ -348,67 +454,8 @@ export class ScreenshotsService {
         }
       }
 
-      // Delete files
-      try {
-        const normalizeAndValidatePath = (
-          fileUrl: string,
-          expectedDir: string,
-        ): string | null => {
-          if (!fileUrl) return null;
-          if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
-            return null;
-          }
-          const normalizedUrl = fileUrl.startsWith("/")
-            ? fileUrl.substring(1)
-            : fileUrl;
-          const resolvedPath = path.resolve(process.cwd(), normalizedUrl);
-          const expectedDirPath = path.resolve(expectedDir);
-
-          if (
-            !resolvedPath.startsWith(expectedDirPath + path.sep) &&
-            resolvedPath !== expectedDirPath
-          ) {
-            this.logger.warn(
-              `Path traversal attempt detected: ${fileUrl} resolved to ${resolvedPath}, expected within ${expectedDirPath}`,
-            );
-            return null;
-          }
-          return resolvedPath;
-        };
-
-        const imagePath = normalizeAndValidatePath(
-          screenshot.imageUrl,
-          this.uploadsDir,
-        );
-        const thumbnailPath = screenshot.thumbnailUrl
-          ? normalizeAndValidatePath(
-              screenshot.thumbnailUrl,
-              this.thumbnailsDir,
-            )
-          : null;
-
-        if (imagePath && fsSync.existsSync(imagePath)) {
-          await fs.unlink(imagePath);
-        }
-
-        if (thumbnailPath && fsSync.existsSync(thumbnailPath)) {
-          await fs.unlink(thumbnailPath);
-        }
-      } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
-        this.logger.error(
-          {
-            error: errorMessage,
-            stack: errorStack,
-            screenshotId,
-            imageUrl: screenshot.imageUrl,
-          },
-          "Error deleting screenshot files",
-        );
-        // Continue with database deletion even if file deletion fails
-      }
+      // Delete files (S3 or local)
+      await this.deleteFilesForScreenshot(screenshot);
 
       // Delete database record
       return tx.screenshot.delete({

@@ -9,6 +9,9 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 initSentry();
 
+// Body size limit (10MB default). Reduces OOM risk from large payloads. Override with BODY_SIZE_LIMIT env.
+const BODY_LIMIT = process.env.BODY_SIZE_LIMIT || "10mb";
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bodyParser: false,
@@ -23,8 +26,57 @@ async function bootstrap() {
     }),
   );
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+  // Reject oversized payloads BEFORE body parsing to prevent OOM (BUG-4/5)
+  const limitBytes =
+    typeof BODY_LIMIT === "string" && BODY_LIMIT.endsWith("mb")
+      ? parseInt(BODY_LIMIT, 10) * 1024 * 1024
+      : 10 * 1024 * 1024;
+
+  app.use((req, res, next) => {
+    const contentLength = req.headers["content-length"];
+    if (contentLength !== undefined && contentLength !== "") {
+      const length = parseInt(contentLength, 10);
+      if (!isNaN(length) && length > limitBytes) {
+        res.status(413).json({
+          statusCode: 413,
+          error: "Payload Too Large",
+          message: `Request body exceeds maximum allowed size (${BODY_LIMIT}).`,
+        });
+        return;
+      }
+    }
+    next();
+  });
+
+  app.use(express.json({ limit: BODY_LIMIT }));
+  app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
+
+  // Body-parser errors (truncated JSON -> "Unterminated string") -> explicit 413
+  app.use(
+    (
+      err: Error & { status?: number; type?: string },
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      if (
+        err.status === 413 ||
+        err.type === "entity.too.large" ||
+        /payload|too large|limit|unterminated string/i.test(err.message)
+      ) {
+        console.warn(
+          `[Request Entity Too Large] ${err.message} | path: ${_req.path}`,
+        );
+        res.status(413).json({
+          statusCode: 413,
+          error: "Payload Too Large",
+          message: `Request body exceeds maximum allowed size (${BODY_LIMIT}).`,
+        });
+        return;
+      }
+      next(err);
+    },
+  );
 
   // CORS configuration - supports multiple origins (domain, IP, with/without port)
   const getAllowedOrigins = (): string[] => {
@@ -172,13 +224,14 @@ async function bootstrap() {
     }),
   );
 
-  app.setGlobalPrefix("api");
+  // Hubstaff-style: versioned API (v1)
+  app.setGlobalPrefix("api/v1");
 
   // Swagger Documentation
   const config = new DocumentBuilder()
     .setTitle("Hubnity API")
     .setDescription(
-      "API для системы учета рабочего времени Hubnity с автоматическими скриншотами, детекцией простоя и мониторингом активности команды",
+      "API для системы учета рабочего времени Hubnity (аналог Hubstaff): учёт времени сотрудников, скриншоты, детекция простоя, мониторинг активности",
     )
     .setVersion("1.0")
     .addBearerAuth(
@@ -195,6 +248,7 @@ async function bootstrap() {
     .addTag("auth", "Аутентификация и авторизация")
     .addTag("users", "Управление пользователями")
     .addTag("companies", "Управление компаниями")
+    .addTag("organizations", "Организации (Hubstaff-style alias)")
     .addTag("projects", "Управление проектами")
     .addTag("time-entries", "Учет рабочего времени")
     .addTag("screenshots", "Скриншоты")
@@ -204,11 +258,13 @@ async function bootstrap() {
     .addTag("url-activity", "Отслеживание URL")
     .addTag("blocked-urls", "Заблокированные URL")
     .addTag("analytics", "Аналитика и отчёты")
+    .addTag("notifications", "Уведомления")
+    .addTag("invitations", "Приглашения в компанию")
     .addTag("health", "Проверка работоспособности")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup("api/docs", app, document, {
+  SwaggerModule.setup("api/v1/docs", app, document, {
     swaggerOptions: {
       persistAuthorization: true,
       tagsSorter: "alpha",
@@ -217,7 +273,7 @@ async function bootstrap() {
   });
 
   // Endpoint для скачивания JSON схемы
-  app.getHttpAdapter().get("/api/docs-json", (req, res) => {
+  app.getHttpAdapter().get("/api/v1/docs-json", (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.setHeader(
       "Content-Disposition",
@@ -228,8 +284,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
-  console.log(`🚀 Server is running on http://localhost:${port}/api`);
-  console.log(`📚 Swagger documentation: http://localhost:${port}/api/docs`);
+  console.log(`🚀 Server is running on http://localhost:${port}/api/v1`);
+  console.log(`📚 Swagger documentation: http://localhost:${port}/api/v1/docs`);
 }
 
 bootstrap().catch((error) => {
