@@ -17,6 +17,7 @@ import {
   ApiBody,
 } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
+import { UsersService } from "../users/users.service";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
@@ -34,7 +35,10 @@ const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
 @ApiTags("auth")
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
@@ -199,9 +203,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
-    summary: "Получить текущего пользователя",
+    summary: "Получить текущего пользователя (Hubstaff-style)",
     description:
-      "Возвращает информацию о текущем аутентифицированном пользователе",
+      "Возвращает полную информацию о текущем пользователе. Аналог Hubstaff GET /users/me. Рекомендуется использовать GET /users/me для единообразия.",
   })
   @ApiResponse({
     status: 200,
@@ -233,7 +237,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: "Не авторизован" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProfile(@GetUser() user: any) {
-    return user;
+    return this.usersService.findOne(user.id, user.companyId);
   }
 
   @Post("refresh")

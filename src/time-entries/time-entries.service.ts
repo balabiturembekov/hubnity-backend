@@ -3,13 +3,18 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
   Logger,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { CacheService } from "../cache/cache.service";
 import { EventsGateway } from "../events/events.gateway";
+import { NotificationsService } from "../notifications/notifications.service";
+import { ScreenshotsService } from "../screenshots/screenshots.service";
 import { CreateTimeEntryDto } from "./dto/create-time-entry.dto";
 import { UpdateTimeEntryDto } from "./dto/update-time-entry.dto";
+import { SyncTimeEntriesDto } from "./dto/sync-time-entry.dto";
 import { UserRole } from "@prisma/client";
 
 @Injectable()
@@ -20,6 +25,8 @@ export class TimeEntriesService {
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
     private cache: CacheService,
+    private notificationsService: NotificationsService,
+    private screenshotsService: ScreenshotsService,
   ) {}
 
   async create(
@@ -65,89 +72,102 @@ export class TimeEntriesService {
       );
     }
 
-    const transactionResult = await this.prisma.$transaction(async (tx) => {
-      // Проверяем проект в транзакции для предотвращения race condition
-      if (dto.projectId) {
-        const project = await tx.project.findFirst({
+    let transactionResult;
+    try {
+      transactionResult = await this.prisma.$transaction(async (tx) => {
+        // Проверяем проект в транзакции для предотвращения race condition
+        if (dto.projectId) {
+          const project = await tx.project.findFirst({
+            where: {
+              id: dto.projectId,
+              companyId,
+            },
+          });
+
+          if (!project) {
+            throw new NotFoundException(
+              `Project with ID ${dto.projectId} not found in your company`,
+            );
+          }
+
+          if (project.status === "ARCHIVED") {
+            throw new BadRequestException(
+              "Cannot create time entry for archived project",
+            );
+          }
+        }
+
+        const activeEntryCheck = await tx.timeEntry.findFirst({
           where: {
-            id: dto.projectId,
-            companyId,
+            userId: dto.userId,
+            status: {
+              in: ["RUNNING", "PAUSED"],
+            },
+            user: {
+              companyId,
+            },
           },
         });
 
-        if (!project) {
-          throw new NotFoundException(
-            `Project with ID ${dto.projectId} not found in your company`,
-          );
-        }
-
-        if (project.status === "ARCHIVED") {
+        if (activeEntryCheck) {
           throw new BadRequestException(
-            "Cannot create time entry for archived project",
+            "User already has an active time entry. Please stop or pause the existing entry first.",
           );
         }
-      }
 
-      const activeEntryCheck = await tx.timeEntry.findFirst({
-        where: {
-          userId: dto.userId,
-          status: {
-            in: ["RUNNING", "PAUSED"],
+        const newEntry = await tx.timeEntry.create({
+          data: {
+            userId: dto.userId,
+            projectId: dto.projectId,
+            startTime,
+            description: dto.description,
+            status: dto.status || "RUNNING",
+            duration: 0,
           },
-          user: {
-            companyId,
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+              },
+            },
+            project: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+              },
+            },
           },
-        },
+        });
+
+        const activity = await tx.activity.create({
+          data: {
+            userId: dto.userId,
+            projectId: dto.projectId,
+            type: "START",
+          },
+        });
+
+        return {
+          entry: newEntry,
+          activityId: activity.id,
+          activityTimestamp: activity.timestamp,
+        };
       });
-
-      if (activeEntryCheck) {
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
         throw new BadRequestException(
           "User already has an active time entry. Please stop or pause the existing entry first.",
         );
       }
-
-      const newEntry = await tx.timeEntry.create({
-        data: {
-          userId: dto.userId,
-          projectId: dto.projectId,
-          startTime,
-          description: dto.description,
-          status: dto.status || "RUNNING",
-          duration: 0,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true,
-            },
-          },
-          project: {
-            select: {
-              id: true,
-              name: true,
-              color: true,
-            },
-          },
-        },
-      });
-
-      const activity = await tx.activity.create({
-        data: {
-          userId: dto.userId,
-          projectId: dto.projectId,
-          type: "START",
-        },
-      });
-
-      return {
-        entry: newEntry,
-        activityId: activity.id,
-        activityTimestamp: activity.timestamp,
-      };
-    });
+      throw error;
+    }
 
     const entry = transactionResult.entry;
     const activityId = transactionResult.activityId;
@@ -225,16 +245,198 @@ export class TimeEntriesService {
     return entry;
   }
 
+  /**
+   * Batch sync with idempotency. For each entry: if idempotencyKey exists, skip; else create.
+   */
+  async sync(
+    dto: SyncTimeEntriesDto,
+    companyId: string,
+    _actorId: string,
+    _actorRole: UserRole,
+  ) {
+    const maxBatch = 100;
+    if (!dto.entries || !Array.isArray(dto.entries)) {
+      throw new BadRequestException("entries must be a non-empty array");
+    }
+    if (dto.entries.length > maxBatch) {
+      throw new BadRequestException(
+        `Maximum ${maxBatch} entries per sync request`,
+      );
+    }
+
+    const results: { idempotencyKey: string; id: string | null; action: "created" | "skipped" }[] = [];
+    let created = 0;
+    let skipped = 0;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+      for (const item of dto.entries) {
+        const existing = await tx.timeEntry.findUnique({
+          where: { idempotencyKey: item.idempotencyKey },
+          select: {
+            id: true,
+            startTime: true,
+            endTime: true,
+            duration: true,
+            projectId: true,
+          },
+        });
+
+        if (existing) {
+          const startTime = new Date(item.startTime);
+          const endTime = item.endTime ? new Date(item.endTime) : null;
+          const incomingDuration =
+            item.duration ?? (endTime && startTime
+              ? Math.floor((endTime.getTime() - startTime.getTime()) / 1000)
+              : 0);
+          const startMatch =
+            existing.startTime.getTime() === startTime.getTime();
+          const projectMatch =
+            (existing.projectId ?? "") === (item.projectId ?? "");
+          const durationMatch = existing.duration === incomingDuration;
+
+          if (!startMatch || !projectMatch || !durationMatch) {
+            throw new ConflictException({
+              message: "Idempotency key conflict: payload differs from existing record",
+              idempotencyKey: item.idempotencyKey,
+              existingId: existing.id,
+            });
+          }
+
+          results.push({
+            idempotencyKey: item.idempotencyKey,
+            id: existing.id,
+            action: "skipped",
+          });
+          skipped++;
+          continue;
+        }
+
+        const user = await tx.user.findFirst({
+          where: { id: item.userId, companyId },
+        });
+        if (!user) {
+          throw new NotFoundException(
+            `User ${item.userId} not found in your company`,
+          );
+        }
+        if (user.status !== "ACTIVE") {
+          throw new BadRequestException(
+            `Cannot create time entry for inactive user ${item.userId}`,
+          );
+        }
+        if (user.role === UserRole.EMPLOYEE && !item.projectId) {
+          throw new BadRequestException(
+            "Project is required for employees in sync",
+          );
+        }
+
+        if (item.projectId) {
+          const project = await tx.project.findFirst({
+            where: { id: item.projectId, companyId },
+          });
+          if (!project) {
+            throw new NotFoundException(
+              `Project ${item.projectId} not found in your company`,
+            );
+          }
+          if (project.status === "ARCHIVED") {
+            throw new BadRequestException(
+              "Cannot create time entry for archived project",
+            );
+          }
+        }
+
+        const startTime = new Date(item.startTime);
+        const endTime = item.endTime ? new Date(item.endTime) : null;
+        const duration =
+          item.duration ?? (endTime && startTime
+            ? Math.floor((endTime.getTime() - startTime.getTime()) / 1000)
+            : 0);
+
+        const status = item.status || "STOPPED";
+        if (status === "RUNNING" || status === "PAUSED") {
+          const activeEntry = await tx.timeEntry.findFirst({
+            where: {
+              userId: item.userId,
+              status: { in: ["RUNNING", "PAUSED"] },
+              user: { companyId },
+            },
+          });
+          if (activeEntry) {
+            const now = new Date();
+            let finalDuration = activeEntry.duration;
+            if (activeEntry.status === "RUNNING") {
+              const elapsed = Math.floor(
+                (now.getTime() - new Date(activeEntry.startTime).getTime()) / 1000,
+              );
+              finalDuration = activeEntry.duration + Math.max(0, elapsed);
+            }
+            await tx.timeEntry.update({
+              where: { id: activeEntry.id },
+              data: {
+                status: "STOPPED",
+                endTime: now,
+                duration: finalDuration,
+                approvalStatus: "PENDING",
+              },
+            });
+          }
+        }
+
+        const newEntry = await tx.timeEntry.create({
+          data: {
+            userId: item.userId,
+            projectId: item.projectId,
+            startTime,
+            endTime,
+            duration: Math.max(0, duration),
+            description: item.description,
+            status,
+            approvalStatus: "PENDING",
+            idempotencyKey: item.idempotencyKey,
+            timezone: item.timezone,
+          },
+        });
+
+        results.push({
+          idempotencyKey: item.idempotencyKey,
+          id: newEntry.id,
+          action: "created",
+        });
+        created++;
+      }
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictException({
+          message:
+            "User already has an active time entry. Sync cannot create duplicate RUNNING/PAUSED entries.",
+        });
+      }
+      throw error;
+    }
+
+    await this.cache.invalidateStats(companyId);
+    return { created, skipped, entries: results };
+  }
+
   async findAll(
     companyId: string,
     userId?: string,
     projectId?: string,
     limit: number = 100,
+    startDate?: Date,
+    endDate?: Date,
   ) {
     const where: {
       user: { companyId: string };
       userId?: string;
       projectId?: string;
+      startTime?: { gte?: Date; lte?: Date };
     } = {
       user: {
         companyId,
@@ -277,6 +479,12 @@ export class TimeEntriesService {
       where.projectId = projectId;
     }
 
+    if (startDate || endDate) {
+      where.startTime = {};
+      if (startDate) where.startTime.gte = startDate;
+      if (endDate) where.startTime.lte = endDate;
+    }
+
     return this.prisma.timeEntry.findMany({
       where,
       take: limit,
@@ -298,6 +506,81 @@ export class TimeEntriesService {
       },
       orderBy: { startTime: "desc" },
     });
+  }
+
+  /**
+   * Hubstaff-style paginated list: returns { time_entries, pagination: { next_page_start_id } }
+   * page_start_id: offset (number) or cursor (last item id from prev page)
+   * time_slot: фильтр по периоду (startTime в диапазоне)
+   */
+  async findAllPaginated(
+    companyId: string,
+    pageLimit: number = 100,
+    pageStartId?: string,
+    userId?: string,
+    projectId?: string,
+    timeSlotStart?: Date,
+    timeSlotStop?: Date,
+  ) {
+    const where: {
+      user: { companyId: string };
+      userId?: string;
+      projectId?: string;
+      startTime?: { gte?: Date; lt?: Date };
+    } = {
+      user: { companyId },
+    };
+    if (userId) {
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId, companyId },
+        select: { id: true },
+      });
+      if (!user) throw new NotFoundException(`User ${userId} not found`);
+      where.userId = userId;
+    }
+    if (projectId) {
+      const project = await this.prisma.project.findFirst({
+        where: { id: projectId, companyId },
+      });
+      if (!project)
+        throw new NotFoundException(`Project ${projectId} not found`);
+      where.projectId = projectId;
+    }
+    if (timeSlotStart || timeSlotStop) {
+      where.startTime = {};
+      if (timeSlotStart) where.startTime.gte = timeSlotStart;
+      if (timeSlotStop) where.startTime.lt = timeSlotStop;
+    }
+    const limit = Math.min(pageLimit, 1000);
+    const skip = pageStartId
+      ? parseInt(pageStartId, 10)
+      : 0;
+    const validSkip = !isNaN(skip) && skip >= 0 ? skip : 0;
+    const items = await this.prisma.timeEntry.findMany({
+      where,
+      take: limit + 1,
+      skip: validSkip,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+        project: {
+          select: { id: true, name: true, color: true },
+        },
+      },
+      orderBy: { startTime: "desc" },
+    });
+    const hasMore = items.length > limit;
+    const result = hasMore ? items.slice(0, limit) : items;
+    const last = result[result.length - 1];
+    return {
+      time_entries: result,
+      pagination: {
+        next_page_start_id: hasMore
+          ? String(validSkip + limit)
+          : null,
+      },
+    };
   }
 
   async findActive(companyId: string, userId?: string) {
@@ -451,6 +734,12 @@ export class TimeEntriesService {
       );
     }
 
+    if (entry.userId === approverId) {
+      throw new ForbiddenException(
+        "You cannot approve your own time entries. Another approver is required.",
+      );
+    }
+
     const updated = await this.prisma.timeEntry.update({
       where: { id: entryId },
       data: {
@@ -475,10 +764,36 @@ export class TimeEntriesService {
             color: true,
           },
         },
+        approvedByUser: {
+          select: { name: true },
+        },
       },
     });
 
     this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+
+    try {
+      await this.notificationsService.create({
+        userId: entry.userId,
+        companyId,
+        type: "TIME_ENTRY_APPROVED",
+        title: "Запись времени одобрена",
+        message: `Ваша запись времени${updated.project ? ` по проекту "${updated.project.name}"` : ""} была одобрена.`,
+        metadata: {
+          timeEntryId: entryId,
+          actorId: approverId,
+          actorName: (updated as { approvedByUser?: { name: string } }).approvedByUser?.name,
+          projectId: updated.projectId ?? undefined,
+          projectName: updated.project?.name,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        { err, entryId, userId: entry.userId },
+        "Failed to create approval notification",
+      );
+    }
+
     return updated;
   }
 
@@ -502,6 +817,12 @@ export class TimeEntriesService {
     if (entry.approvalStatus !== "PENDING") {
       throw new BadRequestException(
         `Time entry is not pending approval (current status: ${entry.approvalStatus})`,
+      );
+    }
+
+    if (entry.userId === approverId) {
+      throw new ForbiddenException(
+        "You cannot reject your own time entries. Another approver is required.",
       );
     }
 
@@ -529,14 +850,62 @@ export class TimeEntriesService {
             color: true,
           },
         },
+        approvedByUser: {
+          select: { name: true },
+        },
       },
     });
 
     this.eventsGateway.broadcastTimeEntryUpdate(updated, companyId);
+
+    try {
+      await this.notificationsService.create({
+        userId: entry.userId,
+        companyId,
+        type: "TIME_ENTRY_REJECTED",
+        title: "Запись времени отклонена",
+        message: rejectionComment
+          ? `Ваша запись времени${updated.project ? ` по проекту "${updated.project.name}"` : ""} была отклонена: ${rejectionComment}`
+          : `Ваша запись времени${updated.project ? ` по проекту "${updated.project.name}"` : ""} была отклонена.`,
+        metadata: {
+          timeEntryId: entryId,
+          actorId: approverId,
+          actorName: (updated as { approvedByUser?: { name: string } }).approvedByUser?.name,
+          projectId: updated.projectId ?? undefined,
+          projectName: updated.project?.name,
+          rejectionComment: rejectionComment ?? undefined,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        { err, entryId, userId: entry.userId },
+        "Failed to create rejection notification",
+      );
+    }
+
     return updated;
   }
 
   async bulkApprove(ids: string[], companyId: string, approverId: string) {
+    const entries = await this.prisma.timeEntry.findMany({
+      where: {
+        id: { in: ids },
+        user: { companyId },
+        approvalStatus: "PENDING",
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+      },
+    });
+
+    const selfEntry = entries.find((e) => e.userId === approverId);
+    if (selfEntry) {
+      throw new ForbiddenException(
+        "You cannot approve your own time entries. Another approver is required.",
+      );
+    }
+
     const result = await this.prisma.timeEntry.updateMany({
       where: {
         id: { in: ids },
@@ -551,6 +920,35 @@ export class TimeEntriesService {
       },
     });
 
+    const approver = await this.prisma.user.findUnique({
+      where: { id: approverId },
+      select: { name: true },
+    });
+
+    for (const entry of entries) {
+      try {
+        await this.notificationsService.create({
+          userId: entry.userId,
+          companyId,
+          type: "TIME_ENTRY_APPROVED",
+          title: "Запись времени одобрена",
+          message: `Ваша запись времени${entry.project ? ` по проекту "${entry.project.name}"` : ""} была одобрена.`,
+          metadata: {
+            timeEntryId: entry.id,
+            actorId: approverId,
+            actorName: approver?.name,
+            projectId: entry.projectId ?? undefined,
+            projectName: entry.project?.name,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          { err, entryId: entry.id, userId: entry.userId },
+          "Failed to create bulk approval notification",
+        );
+      }
+    }
+
     this.eventsGateway.broadcastStatsUpdate({ companyId }, companyId);
     return { approvedCount: result.count };
   }
@@ -561,6 +959,25 @@ export class TimeEntriesService {
     approverId: string,
     rejectionComment?: string,
   ) {
+    const entries = await this.prisma.timeEntry.findMany({
+      where: {
+        id: { in: ids },
+        user: { companyId },
+        approvalStatus: "PENDING",
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+      },
+    });
+
+    const selfEntry = entries.find((e) => e.userId === approverId);
+    if (selfEntry) {
+      throw new ForbiddenException(
+        "You cannot reject your own time entries. Another approver is required.",
+      );
+    }
+
     const result = await this.prisma.timeEntry.updateMany({
       where: {
         id: { in: ids },
@@ -574,6 +991,38 @@ export class TimeEntriesService {
         rejectionComment: rejectionComment ?? null,
       },
     });
+
+    const approver = await this.prisma.user.findUnique({
+      where: { id: approverId },
+      select: { name: true },
+    });
+
+    for (const entry of entries) {
+      try {
+        await this.notificationsService.create({
+          userId: entry.userId,
+          companyId,
+          type: "TIME_ENTRY_REJECTED",
+          title: "Запись времени отклонена",
+          message: rejectionComment
+            ? `Ваша запись времени${entry.project ? ` по проекту "${entry.project.name}"` : ""} была отклонена: ${rejectionComment}`
+            : `Ваша запись времени${entry.project ? ` по проекту "${entry.project.name}"` : ""} была отклонена.`,
+          metadata: {
+            timeEntryId: entry.id,
+            actorId: approverId,
+            actorName: approver?.name,
+            projectId: entry.projectId ?? undefined,
+            projectName: entry.project?.name,
+            rejectionComment: rejectionComment ?? undefined,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          { err, entryId: entry.id, userId: entry.userId },
+          "Failed to create bulk rejection notification",
+        );
+      }
+    }
 
     this.eventsGateway.broadcastStatsUpdate({ companyId }, companyId);
     return { rejectedCount: result.count };
@@ -1025,6 +1474,40 @@ export class TimeEntriesService {
       );
     }
 
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: {
+          companyId,
+          role: { in: [UserRole.OWNER, UserRole.ADMIN] },
+          id: { not: updated.userId },
+          status: "ACTIVE",
+        },
+        select: { id: true },
+      });
+      const adminIds = admins.map((a) => a.id);
+      if (adminIds.length > 0 && updated.user?.name) {
+        await this.notificationsService.createForUsers(
+          adminIds,
+          companyId,
+          "TIME_ENTRY_PENDING_APPROVAL",
+          "Новая запись на утверждение",
+          `${updated.user.name} остановил запись времени${updated.project ? ` по проекту "${updated.project.name}"` : ""}. Требуется утверждение.`,
+          {
+            timeEntryId: updated.id,
+            userId: updated.userId,
+            userName: updated.user.name,
+            projectId: updated.projectId ?? undefined,
+            projectName: updated.project?.name,
+          },
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        { err, entryId: updated.id },
+        "Failed to create pending approval notification",
+      );
+    }
+
     setTimeout(() => {
       this.eventsGateway.broadcastStatsUpdate(
         { trigger: "time-entry-updated" },
@@ -1102,12 +1585,12 @@ export class TimeEntriesService {
         );
       }
 
+      // Не меняем startTime при pause — он обновится при resume (startTime = now)
       const updatedEntry = await tx.timeEntry.update({
         where: { id },
         data: {
           duration: newDuration,
           status: "PAUSED",
-          startTime: now,
         },
         include: {
           user: {
@@ -1456,6 +1939,56 @@ export class TimeEntriesService {
       }));
   }
 
+  /**
+   * Hubstaff-style: activities filtered by time_slot
+   */
+  async findActivitiesByTimeSlot(
+    companyId: string,
+    timeSlotStart: Date,
+    timeSlotStop: Date,
+    userIds?: string[],
+  ) {
+    const where: {
+      user: { companyId: string };
+      userId?: { in: string[] };
+      timestamp: { gte: Date; lt: Date };
+    } = {
+      user: { companyId },
+      timestamp: { gte: timeSlotStart, lt: timeSlotStop },
+    };
+    if (userIds && userIds.length > 0) {
+      const validUsers = await this.prisma.user.findMany({
+        where: { id: { in: userIds }, companyId },
+        select: { id: true },
+      });
+      where.userId = { in: validUsers.map((u) => u.id) };
+    }
+    const activities = await this.prisma.activity.findMany({
+      where,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, avatar: true },
+        },
+        project: {
+          select: { id: true, name: true, color: true },
+        },
+      },
+      orderBy: { timestamp: "desc" },
+      take: 1000,
+    });
+    return activities
+      .filter((a) => a.user !== null)
+      .map((a) => ({
+        id: a.id,
+        userId: a.userId,
+        userName: a.user?.name || "Unknown",
+        userAvatar: a.user?.avatar ?? undefined,
+        type: a.type.toLowerCase(),
+        timestamp: a.timestamp,
+        projectId: a.projectId ?? undefined,
+      }));
+  }
+
   async remove(
     id: string,
     companyId: string,
@@ -1489,7 +2022,17 @@ export class TimeEntriesService {
             "You can only delete your own time entries",
           );
         }
+        // Сотрудники могут удалять только записи со статусом PENDING
+        // APPROVED/REJECTED — заблокированы (учёт, отчёты)
+        if (currentEntry.approvalStatus !== "PENDING") {
+          throw new BadRequestException(
+            "Only pending time entries can be deleted. Approved or rejected entries are locked.",
+          );
+        }
       }
+
+      // BUG-7: Delete S3/local files before cascade deletes Screenshot rows
+      await this.screenshotsService.deleteFilesForTimeEntry(id);
 
       return tx.timeEntry.delete({
         where: { id },

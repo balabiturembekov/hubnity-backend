@@ -10,6 +10,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
+import { InvitationsService } from "../invitations/invitations.service";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
@@ -19,6 +20,7 @@ import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { PinoLogger } from "nestjs-pino";
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
+import { UserRole } from "@prisma/client";
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -30,6 +32,7 @@ export class AuthService implements OnModuleInit {
     private jwtService: JwtService,
     private configService: ConfigService,
     private logger: PinoLogger,
+    private invitationsService: InvitationsService,
   ) {
     this.logger.setContext(AuthService.name);
   }
@@ -106,14 +109,6 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException("Name must be at least 2 characters long");
     }
 
-    // Validate and sanitize company name
-    const sanitizedCompanyName = dto.companyName.trim();
-    if (!sanitizedCompanyName || sanitizedCompanyName.length < 2) {
-      throw new BadRequestException(
-        "Company name must be at least 2 characters long",
-      );
-    }
-
     // Validate password strength
     const sanitizedPassword = dto.password.trim();
     this.validatePasswordStrength(sanitizedPassword);
@@ -127,20 +122,6 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException("Passwords do not match");
     }
 
-    // Validate and normalize companyDomain
-    let normalizedDomain: string | null = null;
-    if (dto.companyDomain && dto.companyDomain.trim() !== "") {
-      const trimmedDomain = dto.companyDomain.trim().toLowerCase();
-      const domainRegex =
-        /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-      if (!domainRegex.test(trimmedDomain)) {
-        throw new BadRequestException(
-          "Invalid domain format. Domain must be a valid domain name (e.g., example.com)",
-        );
-      }
-      normalizedDomain = trimmedDomain;
-    }
-
     if (dto.hourlyRate !== undefined) {
       if (dto.hourlyRate < 0) {
         throw new BadRequestException("Hourly rate cannot be negative");
@@ -152,67 +133,198 @@ export class AuthService implements OnModuleInit {
       }
     }
 
-    const hashedPassword = await bcrypt.hash(sanitizedPassword, 12); // Increased salt rounds from 10 to 12 for better security
-    const userRole = dto.role === "SUPER_ADMIN" ? "OWNER" : dto.role || "OWNER";
+    const invitationToken = dto.invitationToken?.trim();
+    let companyId: string;
+    let userRole: UserRole;
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const existingUser = await tx.user.findFirst({
-        where: { email: normalizedEmail },
-      });
-
-      if (existingUser) {
-        throw new ConflictException("User with this email already exists");
+    if (invitationToken) {
+      // Invitation flow: join existing company
+      const invitation =
+        await this.invitationsService.consumeByToken(invitationToken);
+      if (!invitation) {
+        throw new BadRequestException(
+          "Invalid or expired invitation token. Please request a new invitation.",
+        );
+      }
+      if (invitation.email !== normalizedEmail) {
+        throw new BadRequestException(
+          "Email does not match the invitation. Please use the email address that was invited.",
+        );
+      }
+      companyId = invitation.companyId;
+      userRole = invitation.role;
+    } else {
+      // Standard flow: create new company
+      const sanitizedCompanyName = (dto.companyName ?? "").trim();
+      if (!sanitizedCompanyName || sanitizedCompanyName.length < 2) {
+        throw new BadRequestException(
+          "Company name must be at least 2 characters long",
+        );
       }
 
-      if (normalizedDomain) {
-        const existingCompany = await tx.company.findUnique({
-          where: { domain: normalizedDomain },
-        });
-
-        if (existingCompany) {
-          throw new ConflictException(
-            "Company with this domain already exists",
+      // Validate and normalize companyDomain
+      let normalizedDomain: string | null = null;
+      if (dto.companyDomain && dto.companyDomain.trim() !== "") {
+        const trimmedDomain = dto.companyDomain.trim().toLowerCase();
+        const domainRegex =
+          /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+        if (!domainRegex.test(trimmedDomain)) {
+          throw new BadRequestException(
+            "Invalid domain format. Domain must be a valid domain name (e.g., example.com)",
           );
         }
+        normalizedDomain = trimmedDomain;
       }
 
-      const company = await tx.company.create({
-        data: {
-          name: sanitizedCompanyName,
-          domain: normalizedDomain,
-        },
+      const hashedPassword = await bcrypt.hash(sanitizedPassword, 12);
+      userRole =
+        dto.role === "SUPER_ADMIN"
+          ? UserRole.OWNER
+          : (dto.role as UserRole) || UserRole.OWNER;
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const existingUser = await tx.user.findFirst({
+          where: { email: normalizedEmail },
+        });
+
+        if (existingUser) {
+          throw new ConflictException("User with this email already exists");
+        }
+
+        if (normalizedDomain) {
+          const existingCompany = await tx.company.findUnique({
+            where: { domain: normalizedDomain },
+          });
+
+          if (existingCompany) {
+            throw new ConflictException(
+              "Company with this domain already exists",
+            );
+          }
+        }
+
+        const company = await tx.company.create({
+          data: {
+            name: sanitizedCompanyName,
+            domain: normalizedDomain,
+          },
+        });
+
+        const user = await tx.user.create({
+          data: {
+            name: sanitizedName,
+            email: normalizedEmail,
+            password: hashedPassword,
+            role: userRole,
+            avatar: dto.avatar,
+            hourlyRate: dto.hourlyRate,
+            companyId: company.id,
+            passwordChangedAt: new Date(),
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            status: true,
+            avatar: true,
+            hourlyRate: true,
+            companyId: true,
+            createdAt: true,
+          },
+        });
+
+        return { user, company };
       });
 
-      const user = await tx.user.create({
-        data: {
-          name: sanitizedName,
-          email: normalizedEmail,
-          password: hashedPassword,
-          role: userRole,
-          avatar: dto.avatar,
-          hourlyRate: dto.hourlyRate,
+      companyId = result.company.id;
+    }
+
+    // If invitation flow, create user in existing company
+    if (invitationToken) {
+      const hashedPassword = await bcrypt.hash(sanitizedPassword, 12);
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const existingUser = await tx.user.findFirst({
+          where: { email: normalizedEmail, companyId },
+        });
+
+        if (existingUser) {
+          throw new ConflictException(
+            "A user with this email already exists in this company",
+          );
+        }
+
+        const user = await tx.user.create({
+          data: {
+            name: sanitizedName,
+            email: normalizedEmail,
+            password: hashedPassword,
+            role: userRole,
+            avatar: dto.avatar,
+            hourlyRate: dto.hourlyRate,
+            companyId,
+            passwordChangedAt: new Date(),
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            status: true,
+            avatar: true,
+            hourlyRate: true,
+            companyId: true,
+            createdAt: true,
+          },
+        });
+
+        const company = await tx.company.findUniqueOrThrow({
+          where: { id: companyId },
+        });
+
+        return { user, company };
+      });
+
+      const { user, company } = result;
+
+      const tokens = await this.generateTokens(user.id, user.email, company.id);
+
+      this.logger.info(
+        {
+          userId: user.id,
+          email: user.email,
           companyId: company.id,
-          passwordChangedAt: new Date(),
+          viaInvitation: true,
         },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          status: true,
-          avatar: true,
-          hourlyRate: true,
-          companyId: true,
-          createdAt: true,
-        },
-      });
+        "User successfully registered via invitation",
+      );
 
-      return { user, company };
+      return {
+        user,
+        ...tokens,
+      };
+    }
+
+    // Standard flow: user and company already created above
+    const user = await this.prisma.user.findFirstOrThrow({
+      where: { email: normalizedEmail, companyId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        avatar: true,
+        hourlyRate: true,
+        companyId: true,
+        createdAt: true,
+      },
+    });
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
     });
 
-    const { user, company } = result;
-
-    // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email, company.id);
 
     this.logger.info(

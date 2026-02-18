@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { UsersService } from "../users/users.service";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
@@ -21,6 +22,10 @@ describe("AuthController", () => {
     forgotPassword: jest.fn(),
     resetPassword: jest.fn(),
     logout: jest.fn(),
+  };
+
+  const mockUsersService = {
+    findOne: jest.fn(),
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,6 +51,10 @@ describe("AuthController", () => {
         {
           provide: AuthService,
           useValue: mockAuthService,
+        },
+        {
+          provide: UsersService,
+          useValue: mockUsersService,
         },
       ],
     }).compile();
@@ -128,9 +137,15 @@ describe("AuthController", () => {
 
   describe("getProfile", () => {
     it("should return current user profile", async () => {
+      mockUsersService.findOne.mockResolvedValue(mockUser);
+
       const result = await controller.getProfile(mockUser);
 
       expect(result).toEqual(mockUser);
+      expect(mockUsersService.findOne).toHaveBeenCalledWith(
+        mockUser.id,
+        mockUser.companyId,
+      );
     });
   });
 

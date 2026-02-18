@@ -8,7 +8,7 @@ import {
   Min,
   Max,
   IsUrl,
-  Matches,
+  ValidateIf,
 } from "class-validator";
 import { UserRole } from "@prisma/client";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
@@ -37,17 +37,28 @@ export class RegisterDto {
   @MaxLength(255, { message: "Email must not exceed 255 characters" })
   email: string;
 
-  @ApiProperty({
-    description: "Название компании (Company name)",
+  @ApiPropertyOptional({
+    description:
+      "Название компании (Company name). Required when registering without invitation. Omit when invitationToken is provided.",
     example: 'ООО "Пример"',
     minLength: 2,
     maxLength: 255,
-    required: true,
+    required: false,
   })
+  @ValidateIf((o) => !o.invitationToken)
   @IsString()
   @MinLength(2)
   @MaxLength(255)
-  companyName: string;
+  companyName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Invitation token. When provided, user joins the inviter's company instead of creating a new one. companyName and companyDomain are not needed.",
+    example: "abc123def456...",
+  })
+  @IsOptional()
+  @IsString()
+  invitationToken?: string;
 
   @ApiPropertyOptional({
     description: "Домен компании (Company domain) - необязательно",

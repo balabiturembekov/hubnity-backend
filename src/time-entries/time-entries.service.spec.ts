@@ -1,9 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { NotFoundException } from "@nestjs/common";
+import { NotFoundException, BadRequestException } from "@nestjs/common";
 import { TimeEntriesService } from "./time-entries.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { EventsGateway } from "../events/events.gateway";
 import { CacheService } from "../cache/cache.service";
+import { NotificationsService } from "../notifications/notifications.service";
 
 describe("TimeEntriesService", () => {
   let service: TimeEntriesService;
@@ -12,6 +13,8 @@ describe("TimeEntriesService", () => {
   const mockPrismaService = {
     user: {
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     project: {
       findFirst: jest.fn(),
@@ -21,7 +24,11 @@ describe("TimeEntriesService", () => {
       findFirst: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+      delete: jest.fn(),
     },
+    $transaction: jest.fn((callback: (tx: unknown) => Promise<unknown>) =>
+      callback(mockPrismaService),
+    ),
   };
 
   const mockEventsGateway = {
@@ -33,6 +40,12 @@ describe("TimeEntriesService", () => {
     get: jest.fn(),
     set: jest.fn(),
     invalidate: jest.fn(),
+    invalidateStats: jest.fn(),
+  };
+
+  const mockNotificationsService = {
+    create: jest.fn(),
+    createForUsers: jest.fn(),
   };
 
   const mockTimeEntry = {
@@ -65,6 +78,10 @@ describe("TimeEntriesService", () => {
         {
           provide: CacheService,
           useValue: mockCacheService,
+        },
+        {
+          provide: NotificationsService,
+          useValue: mockNotificationsService,
         },
       ],
     }).compile();
@@ -334,12 +351,31 @@ describe("TimeEntriesService", () => {
     const companyId = "company-id";
     const approverId = "admin-id";
     const ids = ["id-1", "id-2"];
+    const mockEntries = [
+      {
+        id: "id-1",
+        userId: "user-1",
+        user: { id: "user-1", name: "User 1" },
+        project: { id: "p1", name: "Project 1" },
+        projectId: "p1",
+      },
+      {
+        id: "id-2",
+        userId: "user-2",
+        user: { id: "user-2", name: "User 2" },
+        project: null,
+        projectId: null,
+      },
+    ];
 
     it("should approve multiple pending entries", async () => {
+      mockPrismaService.timeEntry.findMany.mockResolvedValue(mockEntries);
       mockPrismaService.timeEntry.updateMany.mockResolvedValue({ count: 2 });
+      mockPrismaService.user.findUnique.mockResolvedValue({ name: "Admin" });
 
       const result = await service.bulkApprove(ids, companyId, approverId);
 
+      expect(mockPrismaService.timeEntry.findMany).toHaveBeenCalled();
       expect(mockPrismaService.timeEntry.updateMany).toHaveBeenCalledWith({
         where: {
           id: { in: ids },
@@ -360,9 +396,27 @@ describe("TimeEntriesService", () => {
     const approverId = "admin-id";
     const ids = ["id-1", "id-2"];
     const rejectionComment = "Требуется уточнение";
+    const mockEntries = [
+      {
+        id: "id-1",
+        userId: "user-1",
+        user: { id: "user-1", name: "User 1" },
+        project: { id: "p1", name: "Project 1" },
+        projectId: "p1",
+      },
+      {
+        id: "id-2",
+        userId: "user-2",
+        user: { id: "user-2", name: "User 2" },
+        project: null,
+        projectId: null,
+      },
+    ];
 
     it("should reject multiple pending entries with comment", async () => {
+      mockPrismaService.timeEntry.findMany.mockResolvedValue(mockEntries);
       mockPrismaService.timeEntry.updateMany.mockResolvedValue({ count: 2 });
+      mockPrismaService.user.findUnique.mockResolvedValue({ name: "Admin" });
 
       const result = await service.bulkReject(
         ids,
@@ -371,6 +425,7 @@ describe("TimeEntriesService", () => {
         rejectionComment,
       );
 
+      expect(mockPrismaService.timeEntry.findMany).toHaveBeenCalled();
       expect(mockPrismaService.timeEntry.updateMany).toHaveBeenCalledWith({
         where: {
           id: { in: ids },
@@ -384,6 +439,71 @@ describe("TimeEntriesService", () => {
         }),
       });
       expect(result.rejectedCount).toBe(2);
+    });
+  });
+
+  describe("remove", () => {
+    const companyId = "company-id";
+    const entryId = "entry-id";
+
+    it("should allow admin to delete approved entry", async () => {
+      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
+        id: entryId,
+        userId: "user-1",
+        approvalStatus: "APPROVED",
+      });
+      mockPrismaService.timeEntry.delete.mockResolvedValue({ id: entryId });
+
+      await service.remove(
+        entryId,
+        companyId,
+        "admin-id",
+        "ADMIN" as never,
+      );
+
+      expect(mockPrismaService.timeEntry.delete).toHaveBeenCalledWith({
+        where: { id: entryId },
+      });
+    });
+
+    it("should allow employee to delete own PENDING entry", async () => {
+      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
+        id: entryId,
+        userId: "emp-id",
+        approvalStatus: "PENDING",
+      });
+      mockPrismaService.timeEntry.delete.mockResolvedValue({ id: entryId });
+
+      await service.remove(
+        entryId,
+        companyId,
+        "emp-id",
+        "EMPLOYEE" as never,
+      );
+
+      expect(mockPrismaService.timeEntry.delete).toHaveBeenCalled();
+    });
+
+    it("should throw BadRequest when employee tries to delete APPROVED entry", async () => {
+      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
+        id: entryId,
+        userId: "emp-id",
+        approvalStatus: "APPROVED",
+      });
+
+      await expect(
+        service.remove(entryId, companyId, "emp-id", "EMPLOYEE" as never),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrismaService.timeEntry.delete).not.toHaveBeenCalled();
+    });
+
+    it("should throw NotFound when entry not found", async () => {
+      mockPrismaService.timeEntry.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.remove(entryId, companyId, "admin-id", "ADMIN" as never),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

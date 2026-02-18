@@ -7,10 +7,14 @@ import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { PrismaModule } from "../prisma/prisma.module";
+import { UsersModule } from "../users/users.module";
+import { InvitationsModule } from "../invitations/invitations.module";
 
 @Module({
   imports: [
     PrismaModule,
+    UsersModule,
+    InvitationsModule,
     PassportModule,
     ConfigModule,
     ScheduleModule.forRoot(),

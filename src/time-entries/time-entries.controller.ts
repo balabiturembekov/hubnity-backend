@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
   ForbiddenException,
+  BadRequestException,
   HttpCode,
   HttpStatus,
 } from "@nestjs/common";
@@ -28,6 +29,7 @@ import { UpdateTimeEntryDto } from "./dto/update-time-entry.dto";
 import { RejectTimeEntryDto } from "./dto/reject-time-entry.dto";
 import { BulkApproveDto } from "./dto/bulk-approve.dto";
 import { BulkRejectDto } from "./dto/bulk-reject.dto";
+import { SyncTimeEntriesDto } from "./dto/sync-time-entry.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -124,6 +126,43 @@ export class TimeEntriesController {
     );
   }
 
+  @Post("sync")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Batch sync time entries (idempotent)",
+    description:
+      "Accepts an array of time entries. For each entry, if idempotencyKey already exists, skip; otherwise create. Uses DB transaction for atomicity. Desktop app offline sync.",
+  })
+  @ApiBody({ type: SyncTimeEntriesDto })
+  @ApiResponse({
+    status: 200,
+    description: "Sync result",
+    schema: {
+      type: "object",
+      properties: {
+        created: { type: "number", example: 5 },
+        skipped: { type: "number", example: 2 },
+        entries: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              idempotencyKey: { type: "string" },
+              id: { type: "string", nullable: true },
+              action: { type: "string", enum: ["created", "skipped"] },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: "Invalid request" })
+  @ApiResponse({ status: 403, description: "Access denied" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async sync(@Body() dto: SyncTimeEntriesDto, @GetUser() user: any) {
+    return this.timeEntriesService.sync(dto, user.companyId, user.id, user.role);
+  }
+
   @Get()
   @ApiOperation({
     summary: "Получить список записей времени",
@@ -149,6 +188,18 @@ export class TimeEntriesController {
       "Максимальное количество записей (максимум 1000, по умолчанию 100)",
     type: Number,
     example: 100,
+  })
+  @ApiQuery({
+    name: "startDate",
+    required: false,
+    description: "Начало периода (ISO 8601). Фильтр по startTime.",
+    example: "2024-01-01T00:00:00Z",
+  })
+  @ApiQuery({
+    name: "endDate",
+    required: false,
+    description: "Конец периода (ISO 8601). Фильтр по startTime.",
+    example: "2024-01-31T23:59:59Z",
   })
   @ApiResponse({
     status: 200,
@@ -204,12 +255,28 @@ export class TimeEntriesController {
     @Query("userId") userId?: string,
     @Query("projectId") projectId?: string,
     @Query("limit") limit?: string,
+    @Query("startDate") startDateStr?: string,
+    @Query("endDate") endDateStr?: string,
   ) {
     let parsedLimit = 100;
     if (limit) {
       const parsed = parseInt(limit, 10);
       if (!isNaN(parsed) && parsed > 0 && parsed <= 1000) {
         parsedLimit = parsed;
+      }
+    }
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+    if (startDateStr) {
+      startDate = new Date(startDateStr);
+      if (isNaN(startDate.getTime())) {
+        throw new BadRequestException("Invalid startDate format");
+      }
+    }
+    if (endDateStr) {
+      endDate = new Date(endDateStr);
+      if (isNaN(endDate.getTime())) {
+        throw new BadRequestException("Invalid endDate format");
       }
     }
 
@@ -223,6 +290,8 @@ export class TimeEntriesController {
         user.id,
         projectId,
         parsedLimit,
+        startDate,
+        endDate,
       );
     }
     return this.timeEntriesService.findAll(
@@ -230,6 +299,8 @@ export class TimeEntriesController {
       userId,
       projectId,
       parsedLimit,
+      startDate,
+      endDate,
     );
   }
 
@@ -523,11 +594,14 @@ export class TimeEntriesController {
     @Query("userId") userId?: string,
     @Query("limit") limit?: string,
   ) {
-    if (
-      user.role !== UserRole.OWNER &&
-      user.role !== UserRole.ADMIN &&
-      user.role !== UserRole.SUPER_ADMIN
-    ) {
+    // BUG-13: MANAGER can see company pending entries (team), not just own
+    const canViewCompanyPending =
+      user.role === UserRole.OWNER ||
+      user.role === UserRole.ADMIN ||
+      user.role === UserRole.MANAGER ||
+      user.role === UserRole.SUPER_ADMIN;
+
+    if (!canViewCompanyPending) {
       if (userId && userId !== user.id) {
         throw new ForbiddenException(
           "You can only view your own pending entries",
@@ -563,7 +637,7 @@ export class TimeEntriesController {
 
   @Post("bulk-approve")
   @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN)
   @ApiBody({ type: BulkApproveDto })
   @ApiOperation({
     summary: "Массовое утверждение записей",
@@ -596,7 +670,7 @@ export class TimeEntriesController {
 
   @Post("bulk-reject")
   @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN)
   @ApiBody({ type: BulkRejectDto })
   @ApiOperation({
     summary: "Массовое отклонение записей",
@@ -756,7 +830,7 @@ export class TimeEntriesController {
 
   @Post(":id/approve")
   @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN)
   @ApiOperation({
     summary: "Утвердить запись времени",
     description:
@@ -794,7 +868,7 @@ export class TimeEntriesController {
 
   @Post(":id/reject")
   @UseGuards(RolesGuard)
-  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.SUPER_ADMIN)
   @ApiBody({ type: RejectTimeEntryDto })
   @ApiOperation({
     summary: "Отклонить запись времени",
@@ -1024,10 +1098,16 @@ export class TimeEntriesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: "Удалить запись времени",
-    description: "Удаляет запись времени",
+    description:
+      "Удаляет запись времени. Сотрудники могут удалять только записи со статусом PENDING (ожидают одобрения). Одобренные и отклонённые записи заблокированы. Админы могут удалять любые записи.",
   })
   @ApiParam({ name: "id", description: "ID записи времени", type: String })
   @ApiResponse({ status: 204, description: "Запись времени успешно удалена" })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Сотрудник пытается удалить одобренную/отклонённую запись (только PENDING)",
+  })
   @ApiResponse({ status: 403, description: "Недостаточно прав доступа" })
   @ApiResponse({ status: 404, description: "Запись времени не найдена" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

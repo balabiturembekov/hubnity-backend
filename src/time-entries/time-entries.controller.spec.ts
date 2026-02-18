@@ -91,6 +91,8 @@ describe("TimeEntriesController", () => {
         mockUser.id,
         undefined,
         100,
+        undefined,
+        undefined,
       );
     });
 
@@ -104,6 +106,8 @@ describe("TimeEntriesController", () => {
         mockUser.id,
         undefined,
         50,
+        undefined,
+        undefined,
       );
     });
 
@@ -117,6 +121,8 @@ describe("TimeEntriesController", () => {
         "target-user-id",
         "project-id",
         25,
+        undefined,
+        undefined,
       );
     });
 
@@ -130,6 +136,8 @@ describe("TimeEntriesController", () => {
         mockUser.id,
         undefined,
         100,
+        undefined,
+        undefined,
       );
     });
 
@@ -143,6 +151,8 @@ describe("TimeEntriesController", () => {
         mockUser.id,
         undefined,
         100,
+        undefined,
+        undefined,
       );
     });
 
@@ -156,6 +166,8 @@ describe("TimeEntriesController", () => {
         mockUser.id,
         undefined,
         100,
+        undefined,
+        undefined,
       );
     });
 
@@ -169,6 +181,8 @@ describe("TimeEntriesController", () => {
         mockUser.id,
         undefined,
         1000,
+        undefined,
+        undefined,
       );
     });
   });
