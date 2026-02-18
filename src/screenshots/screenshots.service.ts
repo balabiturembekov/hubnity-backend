@@ -313,7 +313,7 @@ export class ScreenshotsService {
   /**
    * Delete S3 objects and local files for all screenshots of a time entry.
    * Call BEFORE deleting a TimeEntry (or User) to avoid orphaned files on cascade.
-   * BUG-7 fix: Ensures S3/local cleanup even when Screenshot is cascade-deleted.
+   * Uses batch S3 delete when possible. Never throws — logs errors for admin cleanup.
    */
   async deleteFilesForTimeEntry(timeEntryId: string): Promise<void> {
     const screenshots = await this.prisma.screenshot.findMany({
@@ -321,39 +321,32 @@ export class ScreenshotsService {
       select: { id: true, imageUrl: true, thumbnailUrl: true },
     });
 
-    for (const screenshot of screenshots) {
-      await this.deleteFilesForScreenshot(screenshot);
-    }
-  }
-
-  /**
-   * Delete S3 objects and local files for all screenshots belonging to a user's time entries.
-   * Call BEFORE deleting a User to avoid orphaned files on cascade.
-   */
-  async deleteFilesForUser(userId: string): Promise<void> {
-    const screenshots = await this.prisma.screenshot.findMany({
-      where: { timeEntry: { userId } },
-      select: { id: true, imageUrl: true, thumbnailUrl: true },
-    });
-
-    for (const screenshot of screenshots) {
-      await this.deleteFilesForScreenshot(screenshot);
-    }
-  }
-
-  private async deleteFilesForScreenshot(screenshot: {
-    imageUrl: string;
-    thumbnailUrl: string | null;
-  }): Promise<void> {
-    try {
-      if (this.s3Service.isEnabled()) {
-        const imageKey = this.s3Service.extractKeyFromUrl(screenshot.imageUrl);
-        const thumbKey = screenshot.thumbnailUrl
-          ? this.s3Service.extractKeyFromUrl(screenshot.thumbnailUrl)
+    if (this.s3Service.isEnabled()) {
+      const keys: string[] = [];
+      for (const s of screenshots) {
+        const imageKey = this.s3Service.extractKeyFromUrl(s.imageUrl);
+        const thumbKey = s.thumbnailUrl
+          ? this.s3Service.extractKeyFromUrl(s.thumbnailUrl)
           : null;
-        if (imageKey) await this.s3Service.deleteObject(imageKey);
-        if (thumbKey) await this.s3Service.deleteObject(thumbKey);
-      } else {
+        if (imageKey) keys.push(imageKey);
+        if (thumbKey) keys.push(thumbKey);
+      }
+      if (keys.length > 0) {
+        await this.s3Service.deleteObjects(keys);
+      }
+    }
+
+    for (const screenshot of screenshots) {
+      await this.deleteLocalFilesForScreenshot(screenshot, timeEntryId);
+    }
+  }
+
+  private async deleteLocalFilesForScreenshot(
+    screenshot: { imageUrl: string; thumbnailUrl: string | null },
+    contextId: string,
+  ): Promise<void> {
+    if (!this.s3Service.isEnabled()) {
+      try {
         const imagePath = this.normalizeAndValidatePath(
           screenshot.imageUrl,
           this.uploadsDir,
@@ -370,14 +363,71 @@ export class ScreenshotsService {
         if (thumbnailPath && fsSync.existsSync(thumbnailPath)) {
           await fs.unlink(thumbnailPath);
         }
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          {
+            contextId,
+            imageUrl: screenshot.imageUrl,
+            thumbnailUrl: screenshot.thumbnailUrl,
+            error: msg,
+          },
+          "Local file delete failed — admin may need to clean up manually",
+        );
       }
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        { error: errorMessage, imageUrl: screenshot.imageUrl },
-        "Error deleting screenshot files (continuing)",
-      );
+    }
+  }
+
+  /**
+   * Delete S3 objects and local files for all screenshots belonging to a user's time entries.
+   * Call BEFORE deleting a User to avoid orphaned files on cascade.
+   * Uses batch S3 delete. Never throws — logs errors for admin cleanup.
+   */
+  async deleteFilesForUser(userId: string): Promise<void> {
+    const screenshots = await this.prisma.screenshot.findMany({
+      where: { timeEntry: { userId } },
+      select: { id: true, imageUrl: true, thumbnailUrl: true },
+    });
+
+    if (this.s3Service.isEnabled()) {
+      const keys: string[] = [];
+      for (const s of screenshots) {
+        const imageKey = this.s3Service.extractKeyFromUrl(s.imageUrl);
+        const thumbKey = s.thumbnailUrl
+          ? this.s3Service.extractKeyFromUrl(s.thumbnailUrl)
+          : null;
+        if (imageKey) keys.push(imageKey);
+        if (thumbKey) keys.push(thumbKey);
+      }
+      if (keys.length > 0) {
+        await this.s3Service.deleteObjects(keys);
+      }
+    }
+
+    for (const screenshot of screenshots) {
+      await this.deleteLocalFilesForScreenshot(screenshot, `user:${userId}`);
+    }
+  }
+
+  /**
+   * Delete S3/local files for a single screenshot. Used by delete(screenshotId).
+   * Never throws — logs errors for admin cleanup.
+   */
+  private async deleteFilesForScreenshot(screenshot: {
+    id?: string;
+    imageUrl: string;
+    thumbnailUrl: string | null;
+  }): Promise<void> {
+    const contextId = screenshot.id ?? "unknown";
+    if (this.s3Service.isEnabled()) {
+      const imageKey = this.s3Service.extractKeyFromUrl(screenshot.imageUrl);
+      const thumbKey = screenshot.thumbnailUrl
+        ? this.s3Service.extractKeyFromUrl(screenshot.thumbnailUrl)
+        : null;
+      if (imageKey) await this.s3Service.deleteObject(imageKey);
+      if (thumbKey) await this.s3Service.deleteObject(thumbKey);
+    } else {
+      await this.deleteLocalFilesForScreenshot(screenshot, contextId);
     }
   }
 

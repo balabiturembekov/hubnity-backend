@@ -1,9 +1,15 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  BadRequestException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   HeadBucketCommand,
   CreateBucketCommand,
 } from "@aws-sdk/client-s3";
@@ -94,8 +100,24 @@ export class S3Service implements OnModuleInit {
     }
   }
 
+  /** Max upload size in bytes (default 10MB). Override with S3_MAX_UPLOAD_SIZE env (e.g. 10485760 or 10mb). */
+  private getMaxUploadSize(): number {
+    const env = this.configService.get<string>("S3_MAX_UPLOAD_SIZE");
+    if (env) {
+      const lower = env.toLowerCase().trim();
+      if (lower.endsWith("mb")) {
+        const mb = parseInt(lower, 10);
+        if (!isNaN(mb) && mb > 0) return mb * 1024 * 1024;
+      }
+      const parsed = parseInt(env, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return 10 * 1024 * 1024; // 10MB default
+  }
+
   /**
    * Upload a buffer to S3. Returns the public URL or null if S3 disabled.
+   * Validates Content-Length before upload to prevent storage abuse.
    */
   async uploadBuffer(
     key: string,
@@ -104,6 +126,13 @@ export class S3Service implements OnModuleInit {
   ): Promise<string | null> {
     if (!this.client || !this.enabled) {
       return null;
+    }
+
+    const maxSize = this.getMaxUploadSize();
+    if (buffer.length > maxSize) {
+      throw new BadRequestException(
+        `Upload size (${buffer.length} bytes) exceeds maximum allowed (${maxSize} bytes)`,
+      );
     }
 
     try {
@@ -136,6 +165,7 @@ export class S3Service implements OnModuleInit {
 
   /**
    * Delete an object from S3. No-op if S3 disabled.
+   * Does not throw on failure — logs to allow DB deletion to proceed.
    */
   async deleteObject(key: string): Promise<void> {
     if (!this.client || !this.enabled) {
@@ -151,7 +181,54 @@ export class S3Service implements OnModuleInit {
       );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      this.logger.warn({ key, error: msg }, "S3 delete failed");
+      this.logger.error(
+        { key, s3Path: `${this.bucket}/${key}`, error: msg },
+        "S3 delete failed — admin may need to clean up manually",
+      );
+    }
+  }
+
+  /**
+   * Batch delete objects from S3. More efficient than deleteObject in a loop.
+   * S3 allows up to 1000 keys per request. Logs failures but does not throw.
+   */
+  async deleteObjects(keys: string[]): Promise<void> {
+    if (!this.client || !this.enabled || keys.length === 0) {
+      return;
+    }
+
+    const batchSize = 1000;
+    for (let i = 0; i < keys.length; i += batchSize) {
+      const batch = keys.slice(i, i + batchSize);
+      try {
+        const result = await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: {
+              Objects: batch.map((Key) => ({ Key })),
+              Quiet: false,
+            },
+          }),
+        );
+        const errors = result.Errors ?? [];
+        for (const err of errors) {
+          this.logger.error(
+            {
+              key: err.Key,
+              s3Path: err.Key ? `${this.bucket}/${err.Key}` : undefined,
+              code: err.Code,
+              message: err.Message,
+            },
+            "S3 batch delete failed for object — admin may need to clean up manually",
+          );
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          { keys: batch, s3Bucket: this.bucket, error: msg },
+          "S3 batch delete failed — admin may need to clean up manually",
+        );
+      }
     }
   }
 

@@ -51,7 +51,7 @@ if (item.status === "RUNNING" || item.status === "PAUSED") {
 
 ---
 
-## 2. Timezone Inconsistency in Reports — **CRITICAL (High)**
+## 2. Timezone Inconsistency in Reports — **FIXED**
 
 ### Finding
 
@@ -69,7 +69,7 @@ Example: 11 PM–2 AM in NYC (America/New_York) spans two calendar days locally 
 
 ### Fix
 
-Use the entry’s timezone (or user default) when grouping by date. PostgreSQL example with `AT TIME ZONE`:
+Use the entry’s timezone (or user default) when grouping by date. **FIXED:** Now uses `(te."startTime" AT TIME ZONE COALESCE(NULLIF(te.timezone, ''), 'UTC'))::date`. PostgreSQL example with `AT TIME ZONE`:
 
 ```typescript
 // Option 1: Use entry timezone when available

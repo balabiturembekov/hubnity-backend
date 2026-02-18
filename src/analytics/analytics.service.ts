@@ -8,6 +8,16 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AnalyticsQueryDto, AnalyticsPeriod } from "./dto/analytics-query.dto";
 import { Prisma } from "@prisma/client";
 
+/**
+ * SQL expression for timezone-aware local date from timestamptz.
+ * Uses entry's timezone with UTC fallback for NULL/empty (COALESCE).
+ * PostgreSQL: timestamptz AT TIME ZONE zone → local time in that zone.
+ * Safe: no user input, constant expression only.
+ */
+const LOCAL_DATE_EXPR = Prisma.raw(
+  `(te."startTime" AT TIME ZONE COALESCE(NULLIF(te.timezone, ''), 'UTC'))::date`,
+);
+
 @Injectable()
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
@@ -268,33 +278,33 @@ export class AnalyticsService {
       query,
     );
 
-    // Build raw query conditions from Prisma where
-    const conditions: string[] = ['te."userId" IN (SELECT id FROM users WHERE "companyId" = $1)', 'te.status = \'STOPPED\'', 'te."startTime" >= $2', 'te."startTime" <= $3'];
-    const params: (string | Date)[] = [companyId, start, end];
-    let paramIdx = 4;
+    // Build WHERE conditions with Prisma.sql for safe parameterization
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`te."userId" IN (SELECT id FROM users WHERE "companyId" = ${companyId})`,
+      Prisma.sql`te.status = 'STOPPED'`,
+      Prisma.sql`te."startTime" >= ${start}`,
+      Prisma.sql`te."startTime" <= ${end}`,
+    ];
     if (where.userId) {
-      conditions.push(`te."userId" = $${paramIdx}`);
-      params.push(where.userId as string);
-      paramIdx++;
+      conditions.push(Prisma.sql`te."userId" = ${where.userId as string}`);
     }
     if (where.projectId) {
-      conditions.push(`te."projectId" = $${paramIdx}`);
-      params.push(where.projectId as string);
-      paramIdx++;
+      conditions.push(Prisma.sql`te."projectId" = ${where.projectId as string}`);
     }
+    const whereClause = Prisma.join(conditions, " AND ");
 
-    const whereClause = conditions.join(" AND ");
-    const rawResult = await this.prisma.$queryRawUnsafe<
+    const rawResult = await this.prisma.$queryRaw<
       { date: Date; total_seconds: bigint }[]
     >(
-      `SELECT
-         (te."startTime" AT TIME ZONE COALESCE(NULLIF(te.timezone, ''), 'UTC'))::date as date,
-         COALESCE(SUM(te.duration), 0)::bigint as total_seconds
-       FROM time_entries te
-       WHERE ${whereClause}
-       GROUP BY (te."startTime" AT TIME ZONE COALESCE(NULLIF(te.timezone, ''), 'UTC'))::date
-       ORDER BY date`,
-      ...params,
+      Prisma.sql`
+        SELECT
+          ${LOCAL_DATE_EXPR} as date,
+          COALESCE(SUM(te.duration), 0)::bigint as total_seconds
+        FROM time_entries te
+        WHERE ${whereClause}
+        GROUP BY ${LOCAL_DATE_EXPR}
+        ORDER BY date
+      `,
     );
 
     const byDay = new Map<string, number>();

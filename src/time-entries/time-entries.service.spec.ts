@@ -1,14 +1,31 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, BadRequestException } from "@nestjs/common";
 import { TimeEntriesService } from "./time-entries.service";
+import { TimeEntriesActionService } from "./time-entries-action.service";
+import { TimeEntriesApprovalService } from "./time-entries-approval.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { EventsGateway } from "../events/events.gateway";
-import { CacheService } from "../cache/cache.service";
-import { NotificationsService } from "../notifications/notifications.service";
 
 describe("TimeEntriesService", () => {
   let service: TimeEntriesService;
   let prismaService: PrismaService;
+
+  const mockActionService = {
+    create: jest.fn(),
+    sync: jest.fn(),
+    update: jest.fn(),
+    stop: jest.fn(),
+    pause: jest.fn(),
+    resume: jest.fn(),
+    remove: jest.fn(),
+  };
+
+  const mockApprovalService = {
+    findPending: jest.fn(),
+    approve: jest.fn(),
+    reject: jest.fn(),
+    bulkApprove: jest.fn(),
+    bulkReject: jest.fn(),
+  };
 
   const mockPrismaService = {
     user: {
@@ -26,26 +43,12 @@ describe("TimeEntriesService", () => {
       updateMany: jest.fn(),
       delete: jest.fn(),
     },
+    activity: {
+      findMany: jest.fn(),
+    },
     $transaction: jest.fn((callback: (tx: unknown) => Promise<unknown>) =>
       callback(mockPrismaService),
     ),
-  };
-
-  const mockEventsGateway = {
-    broadcastStatsUpdate: jest.fn(),
-    broadcastTimeEntryUpdate: jest.fn(),
-  };
-
-  const mockCacheService = {
-    get: jest.fn(),
-    set: jest.fn(),
-    invalidate: jest.fn(),
-    invalidateStats: jest.fn(),
-  };
-
-  const mockNotificationsService = {
-    create: jest.fn(),
-    createForUsers: jest.fn(),
   };
 
   const mockTimeEntry = {
@@ -72,16 +75,12 @@ describe("TimeEntriesService", () => {
           useValue: mockPrismaService,
         },
         {
-          provide: EventsGateway,
-          useValue: mockEventsGateway,
+          provide: TimeEntriesActionService,
+          useValue: mockActionService,
         },
         {
-          provide: CacheService,
-          useValue: mockCacheService,
-        },
-        {
-          provide: NotificationsService,
-          useValue: mockNotificationsService,
+          provide: TimeEntriesApprovalService,
+          useValue: mockApprovalService,
         },
       ],
     }).compile();
@@ -204,40 +203,28 @@ describe("TimeEntriesService", () => {
       approvalStatus: "PENDING",
     };
 
-    it("should return pending entries for company", async () => {
-      mockPrismaService.timeEntry.findMany.mockResolvedValue([pendingEntry]);
+    it("should delegate to approvalService and return pending entries", async () => {
+      mockApprovalService.findPending.mockResolvedValue([pendingEntry]);
 
       const result = await service.findPending(companyId, undefined, 100);
 
-      expect(mockPrismaService.timeEntry.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            user: { companyId },
-            status: "STOPPED",
-            approvalStatus: "PENDING",
-          },
-          take: 100,
-        }),
+      expect(mockApprovalService.findPending).toHaveBeenCalledWith(
+        companyId,
+        undefined,
+        100,
       );
       expect(result).toEqual([pendingEntry]);
     });
 
-    it("should filter by userId when provided", async () => {
-      mockPrismaService.user.findFirst.mockResolvedValue({ id: "user-id" });
-      mockPrismaService.timeEntry.findMany.mockResolvedValue([pendingEntry]);
+    it("should pass userId and limit to approvalService", async () => {
+      mockApprovalService.findPending.mockResolvedValue([pendingEntry]);
 
       await service.findPending(companyId, "user-id", 50);
 
-      expect(mockPrismaService.timeEntry.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            user: { companyId },
-            userId: "user-id",
-            status: "STOPPED",
-            approvalStatus: "PENDING",
-          },
-          take: 50,
-        }),
+      expect(mockApprovalService.findPending).toHaveBeenCalledWith(
+        companyId,
+        "user-id",
+        50,
       );
     });
   });
@@ -255,45 +242,33 @@ describe("TimeEntriesService", () => {
       approvedAt: expect.any(Date),
     };
 
-    it("should approve a pending time entry", async () => {
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
-        ...mockTimeEntry,
-        id: entryId,
-        status: "STOPPED",
-        approvalStatus: "PENDING",
-        user: { companyId },
-      });
-      mockPrismaService.timeEntry.update.mockResolvedValue(approvedEntry);
+    it("should delegate to approvalService and return approved entry", async () => {
+      mockApprovalService.approve.mockResolvedValue(approvedEntry);
 
       const result = await service.approve(entryId, companyId, approverId);
 
-      expect(mockPrismaService.timeEntry.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: entryId },
-          data: expect.objectContaining({
-            approvalStatus: "APPROVED",
-            approvedBy: approverId,
-          }),
-        }),
+      expect(mockApprovalService.approve).toHaveBeenCalledWith(
+        entryId,
+        companyId,
+        approverId,
       );
       expect(result).toEqual(approvedEntry);
     });
 
-    it("should throw NotFoundException when entry not found", async () => {
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue(null);
+    it("should propagate NotFoundException from approvalService", async () => {
+      mockApprovalService.approve.mockRejectedValue(
+        new NotFoundException("Time entry with ID entry-id not found"),
+      );
 
       await expect(
         service.approve(entryId, companyId, approverId),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it("should throw BadRequestException when entry is not pending", async () => {
-      const { BadRequestException } = await import("@nestjs/common");
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
-        ...mockTimeEntry,
-        approvalStatus: "APPROVED",
-        user: { companyId },
-      });
+    it("should propagate BadRequestException from approvalService", async () => {
+      mockApprovalService.approve.mockRejectedValue(
+        new BadRequestException("Time entry is not pending approval"),
+      );
 
       await expect(
         service.approve(entryId, companyId, approverId),
@@ -307,7 +282,7 @@ describe("TimeEntriesService", () => {
     const approverId = "admin-id";
     const rejectionComment = "Недостаточно деталей";
 
-    it("should reject a pending time entry with comment", async () => {
+    it("should delegate to approvalService and return rejected entry", async () => {
       const rejectedEntry = {
         ...mockTimeEntry,
         id: entryId,
@@ -317,14 +292,7 @@ describe("TimeEntriesService", () => {
         approvedAt: expect.any(Date),
         rejectionComment,
       };
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
-        ...mockTimeEntry,
-        id: entryId,
-        status: "STOPPED",
-        approvalStatus: "PENDING",
-        user: { companyId },
-      });
-      mockPrismaService.timeEntry.update.mockResolvedValue(rejectedEntry);
+      mockApprovalService.reject.mockResolvedValue(rejectedEntry);
 
       const result = await service.reject(
         entryId,
@@ -333,15 +301,11 @@ describe("TimeEntriesService", () => {
         rejectionComment,
       );
 
-      expect(mockPrismaService.timeEntry.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: entryId },
-          data: expect.objectContaining({
-            approvalStatus: "REJECTED",
-            approvedBy: approverId,
-            rejectionComment,
-          }),
-        }),
+      expect(mockApprovalService.reject).toHaveBeenCalledWith(
+        entryId,
+        companyId,
+        approverId,
+        rejectionComment,
       );
       expect(result).toEqual(rejectedEntry);
     });
@@ -351,42 +315,17 @@ describe("TimeEntriesService", () => {
     const companyId = "company-id";
     const approverId = "admin-id";
     const ids = ["id-1", "id-2"];
-    const mockEntries = [
-      {
-        id: "id-1",
-        userId: "user-1",
-        user: { id: "user-1", name: "User 1" },
-        project: { id: "p1", name: "Project 1" },
-        projectId: "p1",
-      },
-      {
-        id: "id-2",
-        userId: "user-2",
-        user: { id: "user-2", name: "User 2" },
-        project: null,
-        projectId: null,
-      },
-    ];
 
-    it("should approve multiple pending entries", async () => {
-      mockPrismaService.timeEntry.findMany.mockResolvedValue(mockEntries);
-      mockPrismaService.timeEntry.updateMany.mockResolvedValue({ count: 2 });
-      mockPrismaService.user.findUnique.mockResolvedValue({ name: "Admin" });
+    it("should delegate to approvalService and return approved count", async () => {
+      mockApprovalService.bulkApprove.mockResolvedValue({ approvedCount: 2 });
 
       const result = await service.bulkApprove(ids, companyId, approverId);
 
-      expect(mockPrismaService.timeEntry.findMany).toHaveBeenCalled();
-      expect(mockPrismaService.timeEntry.updateMany).toHaveBeenCalledWith({
-        where: {
-          id: { in: ids },
-          user: { companyId },
-          approvalStatus: "PENDING",
-        },
-        data: expect.objectContaining({
-          approvalStatus: "APPROVED",
-          approvedBy: approverId,
-        }),
-      });
+      expect(mockApprovalService.bulkApprove).toHaveBeenCalledWith(
+        ids,
+        companyId,
+        approverId,
+      );
       expect(result.approvedCount).toBe(2);
     });
   });
@@ -396,27 +335,9 @@ describe("TimeEntriesService", () => {
     const approverId = "admin-id";
     const ids = ["id-1", "id-2"];
     const rejectionComment = "Требуется уточнение";
-    const mockEntries = [
-      {
-        id: "id-1",
-        userId: "user-1",
-        user: { id: "user-1", name: "User 1" },
-        project: { id: "p1", name: "Project 1" },
-        projectId: "p1",
-      },
-      {
-        id: "id-2",
-        userId: "user-2",
-        user: { id: "user-2", name: "User 2" },
-        project: null,
-        projectId: null,
-      },
-    ];
 
-    it("should reject multiple pending entries with comment", async () => {
-      mockPrismaService.timeEntry.findMany.mockResolvedValue(mockEntries);
-      mockPrismaService.timeEntry.updateMany.mockResolvedValue({ count: 2 });
-      mockPrismaService.user.findUnique.mockResolvedValue({ name: "Admin" });
+    it("should delegate to approvalService and return rejected count", async () => {
+      mockApprovalService.bulkReject.mockResolvedValue({ rejectedCount: 2 });
 
       const result = await service.bulkReject(
         ids,
@@ -425,19 +346,12 @@ describe("TimeEntriesService", () => {
         rejectionComment,
       );
 
-      expect(mockPrismaService.timeEntry.findMany).toHaveBeenCalled();
-      expect(mockPrismaService.timeEntry.updateMany).toHaveBeenCalledWith({
-        where: {
-          id: { in: ids },
-          user: { companyId },
-          approvalStatus: "PENDING",
-        },
-        data: expect.objectContaining({
-          approvalStatus: "REJECTED",
-          approvedBy: approverId,
-          rejectionComment,
-        }),
-      });
+      expect(mockApprovalService.bulkReject).toHaveBeenCalledWith(
+        ids,
+        companyId,
+        approverId,
+        rejectionComment,
+      );
       expect(result.rejectedCount).toBe(2);
     });
   });
@@ -446,60 +360,42 @@ describe("TimeEntriesService", () => {
     const companyId = "company-id";
     const entryId = "entry-id";
 
-    it("should allow admin to delete approved entry", async () => {
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
-        id: entryId,
-        userId: "user-1",
-        approvalStatus: "APPROVED",
-      });
-      mockPrismaService.timeEntry.delete.mockResolvedValue({ id: entryId });
+    it("should delegate to actionService", async () => {
+      const deleted = { id: entryId };
+      mockActionService.remove.mockResolvedValue(deleted);
 
-      await service.remove(
+      const result = await service.remove(
         entryId,
         companyId,
         "admin-id",
         "ADMIN" as never,
       );
 
-      expect(mockPrismaService.timeEntry.delete).toHaveBeenCalledWith({
-        where: { id: entryId },
-      });
-    });
-
-    it("should allow employee to delete own PENDING entry", async () => {
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
-        id: entryId,
-        userId: "emp-id",
-        approvalStatus: "PENDING",
-      });
-      mockPrismaService.timeEntry.delete.mockResolvedValue({ id: entryId });
-
-      await service.remove(
+      expect(mockActionService.remove).toHaveBeenCalledWith(
         entryId,
         companyId,
-        "emp-id",
-        "EMPLOYEE" as never,
+        "admin-id",
+        "ADMIN",
       );
-
-      expect(mockPrismaService.timeEntry.delete).toHaveBeenCalled();
+      expect(result).toEqual(deleted);
     });
 
-    it("should throw BadRequest when employee tries to delete APPROVED entry", async () => {
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue({
-        id: entryId,
-        userId: "emp-id",
-        approvalStatus: "APPROVED",
-      });
+    it("should propagate BadRequestException from actionService", async () => {
+      mockActionService.remove.mockRejectedValue(
+        new BadRequestException(
+          "Only pending time entries can be deleted. Approved or rejected entries are locked.",
+        ),
+      );
 
       await expect(
         service.remove(entryId, companyId, "emp-id", "EMPLOYEE" as never),
       ).rejects.toThrow(BadRequestException);
-
-      expect(mockPrismaService.timeEntry.delete).not.toHaveBeenCalled();
     });
 
-    it("should throw NotFound when entry not found", async () => {
-      mockPrismaService.timeEntry.findFirst.mockResolvedValue(null);
+    it("should propagate NotFoundException from actionService", async () => {
+      mockActionService.remove.mockRejectedValue(
+        new NotFoundException(`Time entry with ID ${entryId} not found`),
+      );
 
       await expect(
         service.remove(entryId, companyId, "admin-id", "ADMIN" as never),

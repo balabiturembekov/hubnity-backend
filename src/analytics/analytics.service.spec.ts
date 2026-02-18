@@ -24,6 +24,7 @@ describe("AnalyticsService", () => {
       findMany: jest.fn(),
     },
     $queryRawUnsafe: jest.fn(),
+    $queryRaw: jest.fn(),
   };
 
   const mockTimeEntry = {
@@ -195,7 +196,7 @@ describe("AnalyticsService", () => {
           user: { hourlyRate: 50 },
         },
       ]);
-      mockPrismaService.$queryRawUnsafe.mockResolvedValue([
+      mockPrismaService.$queryRaw.mockResolvedValue([
         { date: new Date("2025-01-15"), total_seconds: BigInt(3600) },
       ]);
 

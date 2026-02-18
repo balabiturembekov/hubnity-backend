@@ -335,6 +335,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /** Throttle: avoid spamming identical status within 2 min per user */
+  private lastTimeEntryBroadcast = new Map<string, number>();
+  private static readonly BROADCAST_THROTTLE_MS = 2 * 60 * 1000;
+
   broadcastTimeEntryUpdate(timeEntry: unknown, companyId?: string) {
     try {
       // Validate UUID format for companyId
@@ -347,11 +351,46 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
+      const entry = timeEntry as
+        | {
+            userId?: string;
+            status?: string;
+            projectId?: string | null;
+            duration?: number;
+            [k: string]: unknown;
+          }
+        | null
+        | undefined;
+
+      const userId = entry?.userId;
+      const status = entry?.status ?? "STOPPED";
+      const throttleKey = userId ? `${userId}:${status}` : null;
+      if (throttleKey) {
+        const now = Date.now();
+        const last = this.lastTimeEntryBroadcast.get(throttleKey) ?? 0;
+        if (now - last < EventsGateway.BROADCAST_THROTTLE_MS) {
+          this.logger.debug(
+            { userId, status, throttleKey },
+            "Skipping time-entry broadcast (throttled)",
+          );
+          return;
+        }
+        this.lastTimeEntryBroadcast.set(throttleKey, now);
+      }
+
+      const serverTime = new Date().toISOString();
+      const payload = {
+        ...(timeEntry as Record<string, unknown>),
+        userId: entry?.userId,
+        status: entry?.status,
+        projectId: entry?.projectId ?? null,
+        serverTime,
+        currentDuration: entry?.duration ?? 0,
+        timestamp: serverTime,
+      };
+
       if (companyId) {
-        this.server.to(`company:${companyId}`).emit("time-entry:update", {
-          ...(timeEntry as Record<string, unknown>),
-          timestamp: new Date().toISOString(),
-        });
+        this.server.to(`company:${companyId}`).emit("time-entry:update", payload);
       } else {
         const entryObj = timeEntry as
           | { user?: { companyId?: string }; companyId?: string }
@@ -365,10 +404,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           );
           this.server
             .to(`company:${extractedCompanyId}`)
-            .emit("time-entry:update", {
-              ...(timeEntry as Record<string, unknown>),
-              timestamp: new Date().toISOString(),
-            });
+            .emit("time-entry:update", payload);
         } else {
           this.logger.error(
             `broadcastTimeEntryUpdate called without companyId and cannot extract from timeEntry. Not broadcasting.`,
