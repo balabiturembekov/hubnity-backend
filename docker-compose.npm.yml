@@ -1,0 +1,70 @@
+# Nginx Proxy Manager + Minio — HTTPS via Let's Encrypt
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.npm.yml up -d
+#
+# Prerequisites:
+#   - Ports 80, 443, 81 free on host (87.106.189.11)
+#   - DNS: api.hubnity.io, s3.hubnity.io, hubnity.eu -> 87.106.189.11
+#   - .env: S3_ENABLED=true, S3_ENDPOINT=http://minio:9000, MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+#
+services:
+  # Nginx Proxy Manager — SSL termination, reverse proxy
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: hubnity-npm
+    restart: unless-stopped
+    ports:
+      - "80:80"    # HTTP (redirect to HTTPS)
+      - "443:443"  # HTTPS
+      - "81:81"    # Admin UI: http://87.106.189.11:81
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - timetracker-network
+    depends_on:
+      - nginx
+
+  # Backend: ensure S3 env when using Minio (override from .env)
+  backend:
+    environment:
+      S3_ENABLED: "true"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_BUCKET: ${S3_BUCKET:-hubnity-screenshots}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-https://s3.hubnity.io/hubnity-screenshots}
+    depends_on:
+      - minio
+
+  # Minio — S3-compatible storage for screenshots
+  minio:
+    image: minio/minio:latest
+    container_name: hubnity-minio
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    networks:
+      - timetracker-network
+    # Minio doesn't include curl/nc; optional healthcheck
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:9000/minio/health/live || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 3
+
+  # Internal nginx: remove port 9090 when NPM is in front (optional)
+  # Uncomment to stop exposing nginx directly — all traffic via NPM
+  # nginx:
+  #   ports: []
+
+volumes:
+  npm_data:
+    name: hubnity-npm-data
+  npm_letsencrypt:
+    name: hubnity-npm-letsencrypt
+  minio_data:
+    name: hubnity-minio-data
