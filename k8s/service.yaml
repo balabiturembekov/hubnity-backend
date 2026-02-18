@@ -1,0 +1,15 @@
+# Hubnity Backend — ClusterIP Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: hubnity-backend
+  namespace: hubnity
+spec:
+  selector:
+    app: hubnity-backend
+  ports:
+    - port: 3001
+      targetPort: 3001
+      protocol: TCP
+      name: http
+  type: ClusterIP

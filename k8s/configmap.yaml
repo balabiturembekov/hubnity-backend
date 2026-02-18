@@ -6,6 +6,7 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3001"
+  # BODY_SIZE_LIMIT: "50mb"  # optional; for Base64 screenshots. Must match Ingress proxy-body-size
   POSTGRES_USER: "postgres"
   POSTGRES_DB: "timetracker"
   POSTGRES_HOST: "hubnity-postgres"

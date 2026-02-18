@@ -12,19 +12,24 @@ datasource db {
 }
 
 model Company {
-  id                   String   @id @default(uuid())
-  name                 String
-  domain               String?  @unique
-  screenshotEnabled    Boolean  @default(false)
-  screenshotInterval   Int      @default(60) // in seconds: 30, 60, 300, 600
-  idleThreshold        Int      @default(300) // in seconds: время простоя до автоматической паузы (default 5 minutes)
-  idleDetectionEnabled Boolean  @default(true) // включена ли детекция простоя
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                        String   @id @default(uuid())
+  name                      String
+  domain                    String?  @unique
+  screenshotEnabled        Boolean  @default(true)
+  screenshotInterval       Int      @default(60) // in seconds: 30, 60, 300, 600 (legacy)
+  screenshotIntervalMinutes Int      @default(10) // Desktop app: interval in minutes
+  allowBlurScreenshots      Boolean  @default(true) // Desktop app: allow blurring screenshots
+  idleThreshold             Int      @default(300) // in seconds: время простоя до автоматической паузы (default 5 minutes)
+  idleTimeoutMinutes        Int      @default(5) // Desktop app: idle timeout in minutes
+  idleDetectionEnabled      Boolean  @default(true) // включена ли детекция простоя
+  trackAppsAndUrls          Boolean  @default(true) // Desktop app: track app and URL activity
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   users       User[]
   projects    Project[]
   blockedUrls BlockedUrl[]
+  invitations Invitation[]
 
   @@map("companies")
 }
@@ -52,10 +57,32 @@ model User {
   userActivity        UserActivity?
   appActivities       AppActivity[]
   urlActivities       UrlActivity[]
+  notifications       Notification[]
+  invitationsSent     Invitation[]
 
   @@unique([email, companyId])
   @@index([companyId])
   @@map("users")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  companyId String
+  type      NotificationType
+  title     String
+  message   String
+  readAt    DateTime?
+  metadata  Json? // { timeEntryId?, actorId?, actorName?, projectId?, projectName?, rejectionComment? }
+  createdAt DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([userId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
 }
 
 model Project {
@@ -91,6 +118,8 @@ model TimeEntry {
   approvedBy       String?
   approvedAt       DateTime?
   rejectionComment String?
+  idempotencyKey   String?        @unique // client-generated UUID for sync deduplication
+  timezone         String?        // IANA timezone (e.g. "Europe/Moscow")
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
@@ -259,6 +288,7 @@ enum UserRole {
   SUPER_ADMIN
   OWNER
   ADMIN
+  MANAGER
   EMPLOYEE
 }
 
@@ -289,4 +319,30 @@ enum ActivityType {
   STOP
   PAUSE
   RESUME
+}
+
+enum NotificationType {
+  TIME_ENTRY_APPROVED
+  TIME_ENTRY_REJECTED
+  TIME_ENTRY_PENDING_APPROVAL
+  USER_ADDED
+}
+
+model Invitation {
+  id        String   @id @default(uuid())
+  email     String
+  token     String   @unique
+  companyId String
+  role      UserRole @default(EMPLOYEE)
+  expiresAt DateTime
+  inviterId String?
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inviter User?   @relation(fields: [inviterId], references: [id], onDelete: SetNull)
+
+  @@index([token])
+  @@index([companyId])
+  @@index([expiresAt])
+  @@map("invitations")
 }

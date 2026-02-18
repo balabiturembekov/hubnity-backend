@@ -4,7 +4,7 @@ metadata:
   name: hubnity-ingress
   namespace: hubnity
   annotations:
-    # Для nginx-ingress controller
+    # Critical for Base64 screenshots (~400kb+). Without this, nginx defaults to 1MB -> 413 / "Unterminated string"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
@@ -15,10 +15,10 @@ spec:
   ingressClassName: nginx
   # tls:
   #   - hosts:
-  #       - app.automatonsoft.com
+  #       - app.automatonsoft.de
   #     secretName: hubnity-tls
   rules:
-    - host: app.automatonsoft.com
+    - host: app.automatonsoft.de
       http:
         paths:
           - path: /

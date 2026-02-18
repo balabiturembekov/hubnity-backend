@@ -43,6 +43,8 @@ services:
         max-file: "3"
 
   backend:
+    # For deploy.sh pull: use pre-built image from registry
+    image: ${HUBNITY_BACKEND_IMAGE:-ghcr.io/balabiturembekov/hubnity-backend:latest}
     # Production backend settings
     logging:
       driver: "json-file"
@@ -50,6 +52,15 @@ services:
         max-size: "10m"
         max-file: "5"
     deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        order: start-first
+        failure_action: rollback
+        delay: 10s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
       resources:
         limits:
           cpus: "2"
@@ -57,6 +68,3 @@ services:
         reservations:
           cpus: "1"
           memory: 512M
-    # Remove port mapping in production if using reverse proxy
-    # ports:
-    #   - "3001:3001"

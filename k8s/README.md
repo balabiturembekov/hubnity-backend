@@ -1,5 +1,7 @@
 # Пошаговая инструкция: Деплой Hubnity Backend в Kubernetes
 
+> **Миграция с Docker Compose:** если у вас уже есть данные в Docker volumes, см. [MIGRATION_FROM_DOCKER.md](./MIGRATION_FROM_DOCKER.md).
+
 ## Где выполнять команды?
 
 **Вариант 1 — с вашего компьютера (рекомендуется)**  

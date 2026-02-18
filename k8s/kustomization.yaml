@@ -8,7 +8,10 @@ resources:
   - configmap.yaml
   - postgres.yaml
   - redis.yaml
-  - backend.yaml
+  # Use deployment.yaml + service.yaml (production) or backend.yaml (legacy single-replica)
+  - deployment.yaml
+  - service.yaml
+  # - backend.yaml
   - ingress.yaml
 
 # Для подстановки образа: kustomize edit set image ghcr.io/balabiturembekov/hubnity-backend:TAG

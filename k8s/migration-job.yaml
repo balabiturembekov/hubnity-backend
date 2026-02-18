@@ -1,0 +1,55 @@
+# Hubnity Backend — Prisma Migration Job
+#
+# Run BEFORE deploying the main app:
+#   kubectl apply -f k8s/migration-job.yaml
+#   kubectl wait --for=condition=complete job/hubnity-migrate -n hubnity --timeout=120s
+#   kubectl apply -f k8s/deployment.yaml
+#
+# Or use as init container / pre-deploy step in CI/CD.
+#
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hubnity-migrate
+  namespace: hubnity
+  labels:
+    app: hubnity-backend
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: hubnity-backend
+        job: hubnity-migrate
+    spec:
+      restartPolicy: OnFailure
+      # Uncomment if using private registry
+      # imagePullSecrets:
+      #   - name: ghcr-secret
+      initContainers:
+        - name: wait-for-db
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z hubnity-postgres 5432; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready"
+      containers:
+        - name: migrate
+          image: ghcr.io/balabiturembekov/hubnity-backend:latest
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - npx prisma migrate deploy
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hubnity-secrets
+                  key: DATABASE_URL

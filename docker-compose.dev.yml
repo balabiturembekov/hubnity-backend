@@ -1,0 +1,45 @@
+# Локальная разработка: только PostgreSQL и Redis
+# Backend запускается через npm run start:dev
+#
+# Использование:
+#   docker compose -f docker-compose.dev.yml up -d    # поднять БД
+#   npm run start:dev                                 # запустить backend
+#   docker compose -f docker-compose.dev.yml down      # остановить БД
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hubnity-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: timetracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - hubnity_postgres_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hubnity-redis-dev
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - hubnity_redis_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hubnity_postgres_dev:
+  hubnity_redis_dev:
