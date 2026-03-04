@@ -1,0 +1,92 @@
+model Project {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  status          ProjectStatus @default(ACTIVE)
+  billable        Boolean  @default(true)
+  hourlyRate      Float?
+  
+  organizationId  String
+  clientId        String?
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client          Client?      @relation(fields: [clientId], references: [id])
+  
+  members         ProjectMember[]
+  tasks           ProjectTask[]
+  timeEntries     TimeEntry[]
+  budgets         ProjectBudget[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id         String   @id @default(uuid())
+  role       String   @default("MEMBER") // ADMIN, MEMBER, GUEST
+  joinedAt   DateTime @default(now())
+  
+  projectId  String
+  userId     String
+  
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([projectId, userId])
+}
+
+model ProjectTask {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  status      TaskStatus   @default(OPEN)
+  dueDate     DateTime?
+  
+  projectId   String
+  assigneeId  String?
+  
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee    User?        @relation(fields: [assigneeId], references: [id])
+  
+  timeEntries TimeEntry[]
+}
+
+model ProjectBudget {
+  id              String   @id @default(uuid())
+  budgetType      BudgetType
+  hoursLimit      Float?
+  costLimit       Float?
+  startDate       DateTime?
+  endDate         DateTime?
+  notificationThreshold Int @default(80)
+  
+  projectId       String   @unique
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("project_budgets")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
+  ON_HOLD
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum BudgetType {
+  TOTAL
+  MONTHLY
+  WEEKLY
+}

@@ -1,0 +1,52 @@
+model TimeOffPolicy {
+  id              String   @id @default(uuid())
+  name            String
+  type            TimeOffType
+  daysAllowed     Int      // Количество дней в год
+  accrualRate     Float?   // Начисление в месяц (например, 2.5 дня)
+  carryOver       Int?     // Перенос остатка на следующий год
+  requiresApproval Boolean @default(true)
+  
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  requests        TimeOffRequest[]
+  
+  @@map("time_off_policies")
+}
+
+model TimeOffRequest {
+  id              String   @id @default(uuid())
+  startDate       DateTime
+  endDate         DateTime
+  type            TimeOffType
+  status          RequestStatus @default(PENDING)
+  reason          String?
+  approvedById    String?
+  approvedAt      DateTime?
+  
+  userId          String
+  policyId        String
+  
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policy          TimeOffPolicy  @relation(fields: [policyId], references: [id])
+  approvedBy      User?          @relation("Approver", fields: [approvedById], references: [id])
+  
+  @@index([userId, status])
+  @@index([startDate, endDate])
+  @@map("time_off_requests")
+}
+
+enum TimeOffType {
+  VACATION
+  SICK
+  PERSONAL
+  OTHER
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}

@@ -1,0 +1,90 @@
+model TimeEntry {
+  id              String   @id @default(uuid())
+  startTime       DateTime
+  endTime         DateTime?
+  duration        Int?     // Длительность в секундах
+  description     String?
+  billable        Boolean  @default(true)
+  approved        Boolean  @default(false)
+  approvedById    String?
+  approvedAt      DateTime?
+  
+  userId          String
+  projectId       String
+  taskId          String?
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task            ProjectTask? @relation(fields: [taskId], references: [id])
+  
+  activities      Activity[]
+  screenshots     Screenshot[]
+  appActivities   AppActivity[]
+  editLogs        TimeEditLog[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId, startTime])
+  @@index([projectId, startTime])
+  @@index([startTime])
+  @@index([approved])
+  @@map("time_entries")
+}
+
+model Activity {
+  id              String   @id @default(uuid())
+  trackedDate     DateTime
+  trackedSeconds  Int
+  mousePercent    Float?
+  keyboardPercent Float?
+  
+  timeEntryId     String
+  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  
+  @@index([trackedDate])
+  @@index([timeEntryId])
+  @@map("activities")
+}
+
+model Screenshot {
+  id              String   @id @default(uuid())
+  url             String
+  takenAt         DateTime
+  isBlurred       Boolean  @default(false)
+  
+  timeEntryId     String
+  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  
+  @@index([timeEntryId])
+  @@map("screenshots")
+}
+
+model AppActivity {
+  id              String   @id @default(uuid())
+  appName         String
+  windowTitle     String?
+  url             String?
+  durationSeconds Int
+  trackedAt       DateTime
+  
+  timeEntryId     String
+  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  
+  @@index([timeEntryId])
+}
+
+model TimeEditLog {
+  id              String   @id @default(uuid())
+  editedAt        DateTime @default(now())
+  editedById      String
+  oldValues       Json
+  newValues       Json
+  reason          String?
+  
+  timeEntryId     String
+  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  editedBy        User     @relation(fields: [editedById], references: [id])
+  
+  @@index([timeEntryId])
+}

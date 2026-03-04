@@ -1,0 +1,83 @@
+model Organization {
+  id           String       @id @default(uuid())
+  name         String       @unique
+  ownerId      String       
+
+  members      OrganizationMember[]
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  settings     Json?
+  timezone     String       @default("UTC")
+  currency     String       @default("USD")
+
+  owner        User         @relation("Owner", fields: [ownerId], references: [id])
+  projects     Project[]
+  clients      Client[]
+  invites       Invitation[]
+  holidays     Holiday[]
+  attendanceSchedules AttendanceSchedule[]
+  timeOffPolicies TimeOffPolicy[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id          String        @id @default(uuid())
+
+  role        MemberRole      @default(USER)
+  status      MemberStatus    @default(ACTIVE)
+
+  hourlyRate   Float?
+  weeklyLimit   Int?
+  joinedAt     DateTime?
+  invitedAt    DateTime?
+  settings     Json?
+
+  organizationId    String
+  userId            String
+  invitedById       String
+  valid_from      DateTime @default(now())
+  valid_to        DateTime?
+  is_current      Boolean  @default(true)
+
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy         User?           @relation("Invitation", fields: [invitedById], references: [id])
+
+  createdAt         DateTime        @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+  @@map("organization_members")
+}
+
+model Holiday {
+  id              String   @id @default(uuid())
+  name            String
+  date            DateTime // Конкретная дата
+  recurring       Boolean  @default(false) // Повторяется каждый год?
+  
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  @@unique([organizationId, date, name]) // Чтобы не было дублей
+  @@map("holidays")
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  USER
+}
+
+enum MemberStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}

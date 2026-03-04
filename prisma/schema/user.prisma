@@ -1,0 +1,53 @@
+model User {
+  id           String         @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String         @unique
+  password     String
+  avatar       String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+  
+  RefreshToken RefreshToken[]
+  organizations OrganizationMember[]
+  attendanceShifts AttendanceShift[]
+
+  ownedOrganizations Organization[] @relation("Owner")
+
+  invitationsSent   Invitation[] @relation("Invitation") // приглашения, которые отправил
+  invitationsReceived Invitation[] @relation("InvitedUser") // приглашения, которые получил
+  
+  invitedMembers OrganizationMember[] @relation("Invitation")
+  projectMemberships ProjectMember[]
+  assignedTasks ProjectTask[]
+  timeEntries TimeEntry[]
+  timeEditLogs TimeEditLog[]
+
+  timeOffRequests TimeOffRequest[] // заявки, которые создал
+  approvedTimeOffRequests TimeOffRequest[] @relation("Approver")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String @id @default(uuid())
+  token     String @unique
+  userId    String
+
+  deviceId  String?
+  userAgent String?
+  ipAddress String?
+
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@index([deviceId])
+  @@map("refresh_tokens")
+}

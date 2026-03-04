@@ -1,0 +1,39 @@
+model AttendanceSchedule {
+  id              String   @id @default(uuid())
+  name            String
+  startDate       DateTime
+  repeatUntil     DateTime?
+  repeatType      RepeatType @default(NONE)
+  
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  shifts          AttendanceShift[]
+  
+  @@index([organizationId])
+  @@map("attendance_schedules")
+}
+
+model AttendanceShift {
+  id              String   @id @default(uuid())
+  dayOfWeek       Int?     // 0-6, null если конкретная дата
+  specificDate    DateTime? // Конкретная дата, если не повторяется
+  startTime       String   // "09:00"
+  endTime         String   // "17:00"
+  breakDuration   Int      // Перерыв в минутах
+  
+  scheduleId      String
+  userId          String?  // Если назначено конкретному сотруднику
+  
+  schedule        AttendanceSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  user            User?              @relation(fields: [userId], references: [id])
+  
+  @@map("attendance_shifts")
+}
+
+enum RepeatType {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
