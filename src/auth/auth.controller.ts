@@ -6,7 +6,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  BadRequestException,
+  Headers,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
@@ -17,15 +17,13 @@ import {
   ApiBody,
 } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
-import { UsersService } from "../users/users.service";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
-import { ForgotPasswordDto } from "./dto/forgot-password.dto";
-import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { GetUser } from "./decorators/get-user.decorator";
+import { JwtService } from "@nestjs/jwt";
 
 // Helper to get throttle limit based on environment
 const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
@@ -37,67 +35,17 @@ const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
   ) {}
 
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { limit: getThrottleLimit(3, 100), ttl: 60000 } })
-  @ApiOperation({
-    summary: "Регистрация нового пользователя",
-    description: `Создает новую компанию и пользователя. Первый пользователь становится OWNER компании.
-
-**Обязательные поля:**
-- name (Full name) - Полное имя пользователя
-- email - Email пользователя  
-- companyName (Company name) - Название компании
-- password - Пароль (минимум 8 символов, буквы и цифры)
-- confirmPassword (Confirm password) - Подтверждение пароля
-
-**Опциональные поля:**
-- companyDomain (Company domain) - Домен компании
-
-**Пример запроса:**
-\`\`\`json
-{
-  "name": "Иван Иванов",
-  "email": "ivan@example.com",
-  "companyName": "ООО Пример",
-  "companyDomain": "example.com",
-  "password": "password123",
-  "confirmPassword": "password123"
-}
-\`\`\``,
-  })
-  @ApiBody({
-    type: RegisterDto,
-    examples: {
-      example1: {
-        summary: "Пример регистрации с доменом",
-        value: {
-          name: "Иван Иванов",
-          email: "ivan@example.com",
-          companyName: 'ООО "Пример"',
-          companyDomain: "example.com",
-          password: "password123",
-          confirmPassword: "password123",
-        },
-      },
-      example2: {
-        summary: "Пример регистрации без домена",
-        value: {
-          name: "Петр Петров",
-          email: "petr@example.com",
-          companyName: 'ООО "Тест"',
-          password: "testpass123",
-          confirmPassword: "testpass123",
-        },
-      },
-    },
-  })
+  @ApiOperation({ summary: "Регистрация нового пользователя" })
+  @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
-    description: "Пользователь успешно зарегистрирован",
+    description: "Пользователь успешно создан",
     schema: {
       type: "object",
       properties: {
@@ -105,19 +53,17 @@ export class AuthController {
           type: "object",
           properties: {
             id: { type: "string", example: "uuid" },
-            name: { type: "string", example: "Иван Иванов" },
+            firstName: { type: "string", example: "Иван" },
+            lastName: { type: "string", example: "Иванов" },
             email: { type: "string", example: "user@example.com" },
-            role: {
+            avatar: {
               type: "string",
-              enum: ["OWNER", "ADMIN", "EMPLOYEE"],
-              example: "OWNER",
+              nullable: true,
+              example: "https://example.com/avatar.jpg",
             },
-            status: {
-              type: "string",
-              enum: ["ACTIVE", "INACTIVE"],
-              example: "ACTIVE",
-            },
-            companyId: { type: "string", example: "uuid" },
+            createdAt: { type: "string", format: "date-time" },
+            updatedAt: { type: "string", format: "date-time" },
+            deletedAt: { type: "string", format: "date-time", nullable: true },
           },
         },
         access_token: {
@@ -129,11 +75,8 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 400, description: "Неверные данные запроса" })
-  @ApiResponse({
-    status: 409,
-    description:
-      "Пользователь или компания с таким email/доменом уже существует",
-  })
+  @ApiResponse({ status: 409, description: "Пользователь уже существует" })
+  @ApiResponse({ status: 500, description: "Внутренняя ошибка сервера" })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -159,30 +102,12 @@ export class AuthController {
             id: { type: "string", example: "uuid" },
             name: { type: "string", example: "Иван Иванов" },
             email: { type: "string", example: "user@example.com" },
-            role: {
-              type: "string",
-              enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
-              example: "OWNER",
-            },
-            status: {
-              type: "string",
-              enum: ["ACTIVE", "INACTIVE"],
-              example: "ACTIVE",
-            },
             avatar: {
               type: "string",
               nullable: true,
               example: "https://example.com/avatar.jpg",
             },
             hourlyRate: { type: "number", nullable: true, example: 25.5 },
-            companyId: { type: "string", example: "uuid" },
-            company: {
-              type: "object",
-              properties: {
-                id: { type: "string", example: "uuid" },
-                name: { type: "string", example: 'ООО "Пример"' },
-              },
-            },
           },
         },
         access_token: {
@@ -203,9 +128,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
-    summary: "Получить текущего пользователя (Hubstaff-style)",
+    summary: "Получить текущего пользователя",
     description:
-      "Возвращает полную информацию о текущем пользователе. Аналог Hubstaff GET /users/me. Рекомендуется использовать GET /users/me для единообразия.",
+      "Возвращает полную информацию о текущем пользователе. Рекомендуется использовать GET /users/me для единообразия.",
   })
   @ApiResponse({
     status: 200,
@@ -237,7 +162,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: "Не авторизован" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProfile(@GetUser() user: any) {
-    return this.usersService.findOne(user.id, user.companyId);
+    // return this.usersService.findOne(user.id, user.companyId);
   }
 
   @Post("refresh")
@@ -299,63 +224,63 @@ export class AuthController {
     return this.authService.changePassword(user.id, dto);
   }
 
-  @Post("forgot-password")
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: getThrottleLimit(3, 50), ttl: 60000 } })
-  @ApiOperation({
-    summary: "Запросить восстановление пароля",
-    description:
-      "Отправляет email с токеном для восстановления пароля. Всегда возвращает успех для предотвращения перечисления email.",
-  })
-  @ApiBody({ type: ForgotPasswordDto })
-  @ApiResponse({
-    status: 200,
-    description: "Если аккаунт существует, письмо с инструкциями отправлено",
-    schema: {
-      type: "object",
-      properties: {
-        message: {
-          type: "string",
-          example:
-            "If an account with that email exists, a password reset link has been sent",
-        },
-      },
-    },
-  })
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
-  }
+  // @Post("forgot-password")
+  // @HttpCode(HttpStatus.OK)
+  // @Throttle({ default: { limit: getThrottleLimit(3, 50), ttl: 60000 } })
+  // @ApiOperation({
+  //   summary: "Запросить восстановление пароля",
+  //   description:
+  //     "Отправляет email с токеном для восстановления пароля. Всегда возвращает успех для предотвращения перечисления email.",
+  // })
+  // @ApiBody({ type: ForgotPasswordDto })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: "Если аккаунт существует, письмо с инструкциями отправлено",
+  //   schema: {
+  //     type: "object",
+  //     properties: {
+  //       message: {
+  //         type: "string",
+  //         example:
+  //           "If an account with that email exists, a password reset link has been sent",
+  //       },
+  //     },
+  //   },
+  // })
+  // async forgotPassword(@Body() dto: ForgotPasswordDto) {
+  //   return this.authService.forgotPassword(dto);
+  // }
 
-  @Post("reset-password")
-  @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: getThrottleLimit(5, 100), ttl: 60000 } })
-  @ApiOperation({
-    summary: "Сбросить пароль",
-    description:
-      "Сбрасывает пароль используя токен из email. После сброса все refresh токены пользователя будут отозваны.",
-  })
-  @ApiBody({ type: ResetPasswordDto })
-  @ApiResponse({
-    status: 200,
-    description: "Пароль успешно сброшен",
-    schema: {
-      type: "object",
-      properties: {
-        message: {
-          type: "string",
-          example: "Password has been reset successfully",
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: "Неверные данные запроса или токен уже использован",
-  })
-  @ApiResponse({ status: 401, description: "Неверный или истекший токен" })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
-  }
+  // @Post("reset-password")
+  // @HttpCode(HttpStatus.OK)
+  // @Throttle({ default: { limit: getThrottleLimit(5, 100), ttl: 60000 } })
+  // @ApiOperation({
+  //   summary: "Сбросить пароль",
+  //   description:
+  //     "Сбрасывает пароль используя токен из email. После сброса все refresh токены пользователя будут отозваны.",
+  // })
+  // @ApiBody({ type: ResetPasswordDto })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: "Пароль успешно сброшен",
+  //   schema: {
+  //     type: "object",
+  //     properties: {
+  //       message: {
+  //         type: "string",
+  //         example: "Password has been reset successfully",
+  //       },
+  //     },
+  //   },
+  // })
+  // @ApiResponse({
+  //   status: 400,
+  //   description: "Неверные данные запроса или токен уже использован",
+  // })
+  // @ApiResponse({ status: 401, description: "Неверный или истекший токен" })
+  // async resetPassword(@Body() dto: ResetPasswordDto) {
+  //   return this.authService.resetPassword(dto);
+  // }
 
   @Post("logout")
   @UseGuards(JwtAuthGuard)
@@ -404,52 +329,81 @@ export class AuthController {
     return this.authService.logout(user.id, body?.refreshToken);
   }
 
-  @Post("logout-by-refresh-token")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Выйти из системы используя refresh token",
-    description:
-      "Альтернативный способ logout, который работает только с refresh token (без access token). Отзывает указанный refresh token. Полезно, когда access token истек, но refresh token еще валиден.",
-  })
-  @ApiBody({
-    schema: {
-      type: "object",
-      required: ["refreshToken"],
-      properties: {
-        refreshToken: {
-          type: "string",
-          example: "refresh-token-here",
-          description: "Refresh token для отзыва",
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 200,
-    description: "Успешный выход",
-    schema: {
-      type: "object",
-      properties: {
-        message: { type: "string", example: "Logged out successfully" },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: "Неверные данные запроса (отсутствует refresh token)",
-  })
-  @ApiResponse({
-    status: 401,
-    description: "Неверный или истекший refresh token",
-  })
-  async logoutByRefreshToken(@Body() body: { refreshToken: string }) {
-    if (
-      !body?.refreshToken ||
-      typeof body.refreshToken !== "string" ||
-      body.refreshToken.trim() === ""
-    ) {
-      throw new BadRequestException("Refresh token is required");
+  // auth.controller.ts
+  @Post("debug-token")
+  async debugToken(@Headers("authorization") auth: string) {
+    // 👈 Правильный декоратор
+    if (!auth) {
+      return {
+        valid: false,
+        error: "No authorization header",
+      };
     }
-    return this.authService.logoutByRefreshToken(body.refreshToken);
+
+    const token = auth.replace("Bearer ", "");
+
+    try {
+      // Попробуем верифицировать токен
+      const decoded = this.jwtService.verify(token);
+      return {
+        valid: true,
+        decoded,
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        error: error.message,
+        token: token.substring(0, 20) + "...", // покажем часть токена для отладки
+      };
+    }
   }
+
+  // @Post("logout-by-refresh-token")
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({
+  //   summary: "Выйти из системы используя refresh token",
+  //   description:
+  //     "Альтернативный способ logout, который работает только с refresh token (без access token). Отзывает указанный refresh token. Полезно, когда access token истек, но refresh token еще валиден.",
+  // })
+  // @ApiBody({
+  //   schema: {
+  //     type: "object",
+  //     required: ["refreshToken"],
+  //     properties: {
+  //       refreshToken: {
+  //         type: "string",
+  //         example: "refresh-token-here",
+  //         description: "Refresh token для отзыва",
+  //       },
+  //     },
+  //   },
+  // })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: "Успешный выход",
+  //   schema: {
+  //     type: "object",
+  //     properties: {
+  //       message: { type: "string", example: "Logged out successfully" },
+  //     },
+  //   },
+  // })
+  // @ApiResponse({
+  //   status: 400,
+  //   description: "Неверные данные запроса (отсутствует refresh token)",
+  // })
+  // @ApiResponse({
+  //   status: 401,
+  //   description: "Неверный или истекший refresh token",
+  // })
+  // async logoutByRefreshToken(@Body() body: { refreshToken: string }) {
+  //   if (
+  //     !body?.refreshToken ||
+  //     typeof body.refreshToken !== "string" ||
+  //     body.refreshToken.trim() === ""
+  //   ) {
+  //     throw new BadRequestException("Refresh token is required");
+  //   }
+  //   return this.authService.logoutByRefreshToken(body.refreshToken);
+  // }
 }

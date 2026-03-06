@@ -1,30 +1,25 @@
 import { Module } from "@nestjs/common";
-import { TimeEntriesService } from "./time-entries.service";
 import { TimeEntriesController } from "./time-entries.controller";
-import { TimeEntriesActionService } from "./time-entries-action.service";
-import { TimeEntriesApprovalService } from "./time-entries-approval.service";
-import { TimeEntriesInternalService } from "./time-entries-internal.service";
+import { ScreenshotsController } from "./screenshots.controller";
+import { TimeEntriesService } from "./time-entries.service";
 import { PrismaModule } from "../prisma/prisma.module";
-import { CacheModule } from "../cache/cache.module";
-import { EventsModule } from "../events/events.module";
-import { NotificationsModule } from "../notifications/notifications.module";
-import { ScreenshotsModule } from "../screenshots/screenshots.module";
+import { MulterModule } from "@nestjs/platform-express";
+import { ApprovalService } from "./approval.service";
+import { ApprovalController } from "./approval.controller";
 
 @Module({
   imports: [
     PrismaModule,
-    CacheModule,
-    EventsModule,
-    NotificationsModule,
-    ScreenshotsModule,
+    MulterModule.register({
+      dest: "./uploads",
+    }),
   ],
-  controllers: [TimeEntriesController],
-  providers: [
-    TimeEntriesInternalService,
-    TimeEntriesActionService,
-    TimeEntriesApprovalService,
-    TimeEntriesService,
+  controllers: [
+    TimeEntriesController,
+    ScreenshotsController,
+    ApprovalController,
   ],
-  exports: [TimeEntriesService],
+  providers: [TimeEntriesService, ApprovalService],
+  exports: [TimeEntriesService, ApprovalService],
 })
 export class TimeEntriesModule {}

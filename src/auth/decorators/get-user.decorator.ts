@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 
 export const GetUser = createParamDecorator(
-  (data: unknown, ctx: ExecutionContext) => {
+  (data: string | undefined, ctx: ExecutionContext) => {
     const request = ctx.switchToHttp().getRequest();
     const user = request.user;
 
@@ -14,6 +14,6 @@ export const GetUser = createParamDecorator(
       throw new UnauthorizedException("User not authenticated");
     }
 
-    return user;
+    return data ? user[data] : user;
   },
 );

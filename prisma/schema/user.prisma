@@ -13,6 +13,9 @@ model User {
   organizations OrganizationMember[]
   attendanceShifts AttendanceShift[]
 
+  lockedPeriods     LockedPeriod[] @relation("Locker")
+  unlockedPeriods   LockedPeriod[] @relation("Unlocker")
+
   ownedOrganizations Organization[] @relation("Owner")
 
   invitationsSent   Invitation[] @relation("Invitation") // приглашения, которые отправил

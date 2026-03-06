@@ -19,6 +19,7 @@ model Organization {
   holidays     Holiday[]
   attendanceSchedules AttendanceSchedule[]
   timeOffPolicies TimeOffPolicy[]
+  lockedPeriods LockedPeriod[]
 
   @@map("organizations")
 }

@@ -8,27 +8,17 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
-import { UsersModule } from "./users/users.module";
+// import { UsersModule } from "./users/users.module";
 import { ProjectsModule } from "./projects/projects.module";
+// import { TasksModule } from "./tasks/tasks.module";
 import { TimeEntriesModule } from "./time-entries/time-entries.module";
-import { EventsModule } from "./events/events.module";
-import { ScreenshotsModule } from "./screenshots/screenshots.module";
-import { TeamActivityModule } from "./team-activity/team-activity.module";
-import { CompaniesModule } from "./companies/companies.module";
+// import { DashboardModule } from "./dashboard/dashboard.module";
+import { ReportsModule } from "./reports/reports.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
-import { CacheModule } from "./cache/cache.module";
-import { IdleDetectionModule } from "./idle-detection/idle-detection.module";
-import { AppActivityModule } from "./app-activity/app-activity.module";
-import { UrlActivityModule } from "./url-activity/url-activity.module";
-import { BlockedUrlModule } from "./blocked-url/blocked-url.module";
-import { AnalyticsModule } from "./analytics/analytics.module";
-import { NotificationsModule } from "./notifications/notifications.module";
-import { MailerModule } from "./mailer/mailer.module";
-import { InvitationsModule } from "./invitations/invitations.module";
+import { PayrollModule } from "./payroll/payroll.module";
 
 @Module({
   imports: [
-    CacheModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ".env",
@@ -106,30 +96,22 @@ import { InvitationsModule } from "./invitations/invitations.module";
         const isProduction = configService.get("NODE_ENV") === "production";
         return [
           {
-            ttl: 60000, // 1 minute
-            limit: isProduction ? 100 : 1000, // 100 requests per minute in production, 1000 in development
+            ttl: 60000,
+            limit: isProduction ? 100 : 1000,
           },
         ];
       },
     }),
     PrismaModule,
     AuthModule,
-    UsersModule,
-    ProjectsModule,
-    TimeEntriesModule,
-    EventsModule,
-    ScreenshotsModule,
-    TeamActivityModule,
-    CompaniesModule,
     OrganizationsModule,
-    IdleDetectionModule,
-    AppActivityModule,
-    UrlActivityModule,
-    BlockedUrlModule,
-    AnalyticsModule,
-    NotificationsModule,
-    MailerModule,
-    InvitationsModule,
+    // UsersModule,
+    ProjectsModule,
+    // TasksModule,
+    TimeEntriesModule,
+    PayrollModule,
+    // DashboardModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

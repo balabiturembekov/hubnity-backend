@@ -16,11 +16,16 @@ model TimeEntry {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   task            ProjectTask? @relation(fields: [taskId], references: [id])
+
+  locked          Boolean   @default(false)
+  lockedAt        DateTime?
+  lockedById      String?
   
   activities      Activity[]
   screenshots     Screenshot[]
   appActivities   AppActivity[]
   editLogs        TimeEditLog[]
+  idlePeriods     IdlePeriod[]
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -30,6 +35,73 @@ model TimeEntry {
   @@index([startTime])
   @@index([approved])
   @@map("time_entries")
+}
+
+model TimeEditLog {
+  id              String   @id @default(uuid())
+  timeEntryId     String
+  userId          String   // Кто изменил
+  changedAt       DateTime @default(now())
+  
+  // Что было и что стало
+  oldValues       Json
+  newValues       Json
+  
+  // Причина изменения (если указал пользователь)
+  reason          String?
+  
+  // IP и user-agent для аудита
+  ipAddress       String?
+  userAgent       String?
+  
+  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([timeEntryId])
+  @@index([userId])
+  @@index([changedAt])
+}
+
+model LockedPeriod {
+  id              String   @id @default(uuid())
+  organizationId  String
+  
+  // Период блокировки
+  startDate       DateTime // Начало периода (включительно)
+  endDate         DateTime // Конец периода (включительно)
+  
+  // Причина блокировки
+  reason          String?
+  
+  // Кто и когда заблокировал
+  lockedById      String
+  lockedAt        DateTime @default(now())
+  
+  // Мягкое удаление
+  isActive        Boolean  @default(true)
+  unlockedById    String?
+  unlockedAt      DateTime?
+  
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lockedBy        User         @relation("Locker", fields: [lockedById], references: [id])
+  unlockedBy      User?        @relation("Unlocker", fields: [unlockedById], references: [id])
+  
+  @@unique([organizationId, startDate, endDate])
+  @@index([organizationId, isActive])
+}
+
+model IdlePeriod {
+  id              String   @id @default(uuid())
+  startTime       DateTime
+  endTime         DateTime?
+  duration        Int?     // в секундах
+  reason          String?  // "away from keyboard", "locked screen", etc.
+  
+  timeEntryId     String
+  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  
+  @@index([timeEntryId])
+  @@index([startTime])
 }
 
 model Activity {
@@ -65,6 +137,8 @@ model AppActivity {
   appName         String
   windowTitle     String?
   url             String?
+  domain          String?
+  category        String?
   durationSeconds Int
   trackedAt       DateTime
   
@@ -72,19 +146,6 @@ model AppActivity {
   timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
   
   @@index([timeEntryId])
-}
-
-model TimeEditLog {
-  id              String   @id @default(uuid())
-  editedAt        DateTime @default(now())
-  editedById      String
-  oldValues       Json
-  newValues       Json
-  reason          String?
-  
-  timeEntryId     String
-  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  editedBy        User     @relation(fields: [editedById], references: [id])
-  
-  @@index([timeEntryId])
+  @@index([trackedAt])
+  @@index([domain])
 }

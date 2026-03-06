@@ -4,10 +4,11 @@ import { AppModule } from "./app.module";
 import * as express from "express";
 import helmet from "helmet";
 import { join } from "path";
-import { initSentry } from "./sentry/sentry.config";
+// import { initSentry } from "./sentry/sentry.config";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { BusinessExceptionFilter } from "./filters/business-exception.filter";
 
-initSentry();
+// initSentry();
 
 // Body size limit (10MB default). Reduces OOM risk from large payloads. Override with BODY_SIZE_LIMIT env.
 const BODY_LIMIT = process.env.BODY_SIZE_LIMIT || "10mb";
@@ -221,17 +222,20 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
-  // Hubstaff-style: versioned API (v1)
-  app.setGlobalPrefix("api/v1");
+  app.useGlobalFilters(new BusinessExceptionFilter());
+  app.setGlobalPrefix("api/v1/");
 
   // Swagger Documentation
   const config = new DocumentBuilder()
     .setTitle("Hubnity API")
     .setDescription(
-      "API для системы учета рабочего времени Hubnity (аналог Hubstaff): учёт времени сотрудников, скриншоты, детекция простоя, мониторинг активности",
+      "API для системы учета рабочего времени Hubnity: учёт времени сотрудников, скриншоты, детекция простоя, мониторинг активности",
     )
     .setVersion("1.0")
     .addBearerAuth(
@@ -247,8 +251,7 @@ async function bootstrap() {
     )
     .addTag("auth", "Аутентификация и авторизация")
     .addTag("users", "Управление пользователями")
-    .addTag("companies", "Управление компаниями")
-    .addTag("organizations", "Организации (Hubstaff-style alias)")
+    .addTag("organizations", "Организации")
     .addTag("projects", "Управление проектами")
     .addTag("time-entries", "Учет рабочего времени")
     .addTag("screenshots", "Скриншоты")

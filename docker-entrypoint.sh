@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-# POSTGRES_HOST / REDIS_HOST for K8s (hubnity-postgres, hubnity-redis); default postgres/redis for docker-compose
 POSTGRES_HOST="${POSTGRES_HOST:-postgres}"
 REDIS_HOST="${REDIS_HOST:-redis}"
 
