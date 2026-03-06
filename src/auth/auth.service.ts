@@ -220,13 +220,6 @@ export class AuthService {
     const sanitizedNewPassword = dto.newPassword.trim();
     this.validatePasswordStrength(sanitizedNewPassword);
 
-    // Validate confirm password
-    if (sanitizedNewPassword !== dto.confirmPassword.trim()) {
-      throw new BadRequestException(
-        "New password and confirm password do not match",
-      );
-    }
-
     // Get user
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

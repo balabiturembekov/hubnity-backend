@@ -7,6 +7,8 @@ import {
   HttpCode,
   HttpStatus,
   Headers,
+  Param,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
@@ -24,6 +26,7 @@ import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { GetUser } from "./decorators/get-user.decorator";
 import { JwtService } from "@nestjs/jwt";
+import { UsersService } from "@/users/users.service";
 
 // Helper to get throttle limit based on environment
 const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
@@ -36,6 +39,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Post("register")
@@ -132,37 +136,11 @@ export class AuthController {
     description:
       "Возвращает полную информацию о текущем пользователе. Рекомендуется использовать GET /users/me для единообразия.",
   })
-  @ApiResponse({
-    status: 200,
-    description: "Информация о пользователе",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string", example: "uuid" },
-        name: { type: "string", example: "Иван Иванов" },
-        email: { type: "string", example: "user@example.com" },
-        role: {
-          type: "string",
-          enum: ["SUPER_ADMIN", "OWNER", "ADMIN", "EMPLOYEE"],
-          example: "OWNER",
-        },
-        status: {
-          type: "string",
-          enum: ["ACTIVE", "INACTIVE"],
-          example: "ACTIVE",
-        },
-        avatar: { type: "string", nullable: true },
-        hourlyRate: { type: "number", nullable: true },
-        companyId: { type: "string", example: "uuid" },
-        createdAt: { type: "string", format: "date-time" },
-        updatedAt: { type: "string", format: "date-time" },
-      },
-    },
-  })
   @ApiResponse({ status: 401, description: "Не авторизован" })
+  @ApiResponse({ status: 404, description: "Пользователь не найден" })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getProfile(@GetUser() user: any) {
-    // return this.usersService.findOne(user.id, user.companyId);
+    return this.usersService.findOne(user.id);
   }
 
   @Post("refresh")
@@ -327,35 +305,6 @@ export class AuthController {
     @Body() body?: { refreshToken?: string },
   ) {
     return this.authService.logout(user.id, body?.refreshToken);
-  }
-
-  // auth.controller.ts
-  @Post("debug-token")
-  async debugToken(@Headers("authorization") auth: string) {
-    // 👈 Правильный декоратор
-    if (!auth) {
-      return {
-        valid: false,
-        error: "No authorization header",
-      };
-    }
-
-    const token = auth.replace("Bearer ", "");
-
-    try {
-      // Попробуем верифицировать токен
-      const decoded = this.jwtService.verify(token);
-      return {
-        valid: true,
-        decoded,
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        error: error.message,
-        token: token.substring(0, 20) + "...", // покажем часть токена для отладки
-      };
-    }
   }
 
   // @Post("logout-by-refresh-token")
