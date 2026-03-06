@@ -9,8 +9,8 @@
 //   Min,
 //   Max,
 // } from "class-validator";
-// import { UserRole, UserStatus } from "@prisma/client";
 // import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+// import { MemberRole, MemberStatus } from "@prisma/client";
 
 // export class CreateUserDto {
 //   @ApiProperty({

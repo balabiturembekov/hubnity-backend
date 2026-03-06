@@ -1,21 +1,21 @@
 model Invitation {
-  id              String   @id @default(uuid())
-  email           String
-  role            MemberRole @default(USER)
-  token           String   @unique
-  expiresAt       DateTime
-  acceptedAt      DateTime?
-  
-  organizationId  String
-  invitedById     String
-  userId          String?  // Если пользователь уже существует
-  
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invitedBy       User         @relation("Invitation", fields: [invitedById], references: [id])
-  invitedUser     User?        @relation("InvitedUser", fields: [userId], references: [id])
-  
-  createdAt       DateTime @default(now())
-  
+  id         String     @id @default(uuid())
+  email      String
+  role       MemberRole @default(USER)
+  token      String     @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+
+  organizationId String
+  invitedById    String
+  userId         String? // Если пользователь уже существует
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("Invitation", fields: [invitedById], references: [id])
+  invitedUser  User?        @relation("InvitedUser", fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
   @@index([token])
   @@index([email])
   @@index([expiresAt])

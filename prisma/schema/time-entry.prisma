@@ -1,35 +1,35 @@
 model TimeEntry {
-  id              String   @id @default(uuid())
-  startTime       DateTime
-  endTime         DateTime?
-  duration        Int?     // Длительность в секундах
-  description     String?
-  billable        Boolean  @default(true)
-  approved        Boolean  @default(false)
-  approvedById    String?
-  approvedAt      DateTime?
-  
-  userId          String
-  projectId       String
-  taskId          String?
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  task            ProjectTask? @relation(fields: [taskId], references: [id])
+  id           String    @id @default(uuid())
+  startTime    DateTime
+  endTime      DateTime?
+  duration     Int? // Длительность в секундах
+  description  String?
+  billable     Boolean   @default(true)
+  approved     Boolean   @default(false)
+  approvedById String?
+  approvedAt   DateTime?
 
-  locked          Boolean   @default(false)
-  lockedAt        DateTime?
-  lockedById      String?
-  
-  activities      Activity[]
-  screenshots     Screenshot[]
-  appActivities   AppActivity[]
-  editLogs        TimeEditLog[]
-  idlePeriods     IdlePeriod[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  userId    String
+  projectId String
+  taskId    String?
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    ProjectTask? @relation(fields: [taskId], references: [id])
+
+  locked     Boolean   @default(false)
+  lockedAt   DateTime?
+  lockedById String?
+
+  activities    Activity[]
+  screenshots   Screenshot[]
+  appActivities AppActivity[]
+  editLogs      TimeEditLog[]
+  idlePeriods   IdlePeriod[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId, startTime])
   @@index([projectId, startTime])
   @@index([startTime])
@@ -38,68 +38,68 @@ model TimeEntry {
 }
 
 model TimeEditLog {
-  id              String   @id @default(uuid())
-  timeEntryId     String
-  userId          String   // Кто изменил
-  changedAt       DateTime @default(now())
-  
+  id          String   @id @default(uuid())
+  timeEntryId String
+  userId      String // Кто изменил
+  changedAt   DateTime @default(now())
+
   // Что было и что стало
-  oldValues       Json
-  newValues       Json
-  
+  oldValues Json
+  newValues Json
+
   // Причина изменения (если указал пользователь)
-  reason          String?
-  
+  reason String?
+
   // IP и user-agent для аудита
-  ipAddress       String?
-  userAgent       String?
-  
-  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [userId], references: [id])
-  
+  ipAddress String?
+  userAgent String?
+
+  timeEntry TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
   @@index([timeEntryId])
   @@index([userId])
   @@index([changedAt])
 }
 
 model LockedPeriod {
-  id              String   @id @default(uuid())
-  organizationId  String
-  
+  id             String @id @default(uuid())
+  organizationId String
+
   // Период блокировки
-  startDate       DateTime // Начало периода (включительно)
-  endDate         DateTime // Конец периода (включительно)
-  
+  startDate DateTime // Начало периода (включительно)
+  endDate   DateTime // Конец периода (включительно)
+
   // Причина блокировки
-  reason          String?
-  
+  reason String?
+
   // Кто и когда заблокировал
-  lockedById      String
-  lockedAt        DateTime @default(now())
-  
+  lockedById String
+  lockedAt   DateTime @default(now())
+
   // Мягкое удаление
-  isActive        Boolean  @default(true)
-  unlockedById    String?
-  unlockedAt      DateTime?
-  
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lockedBy        User         @relation("Locker", fields: [lockedById], references: [id])
-  unlockedBy      User?        @relation("Unlocker", fields: [unlockedById], references: [id])
-  
+  isActive     Boolean   @default(true)
+  unlockedById String?
+  unlockedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lockedBy     User         @relation("Locker", fields: [lockedById], references: [id])
+  unlockedBy   User?        @relation("Unlocker", fields: [unlockedById], references: [id])
+
   @@unique([organizationId, startDate, endDate])
   @@index([organizationId, isActive])
 }
 
 model IdlePeriod {
-  id              String   @id @default(uuid())
-  startTime       DateTime
-  endTime         DateTime?
-  duration        Int?     // в секундах
-  reason          String?  // "away from keyboard", "locked screen", etc.
-  
-  timeEntryId     String
-  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  
+  id        String    @id @default(uuid())
+  startTime DateTime
+  endTime   DateTime?
+  duration  Int? // в секундах
+  reason    String? // "away from keyboard", "locked screen", etc.
+
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+
   @@index([timeEntryId])
   @@index([startTime])
 }
@@ -110,24 +110,24 @@ model Activity {
   trackedSeconds  Int
   mousePercent    Float?
   keyboardPercent Float?
-  
-  timeEntryId     String
-  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  
+
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+
   @@index([trackedDate])
   @@index([timeEntryId])
   @@map("activities")
 }
 
 model Screenshot {
-  id              String   @id @default(uuid())
-  url             String
-  takenAt         DateTime
-  isBlurred       Boolean  @default(false)
-  
-  timeEntryId     String
-  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  
+  id        String   @id @default(uuid())
+  url       String
+  takenAt   DateTime
+  isBlurred Boolean  @default(false)
+
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+
   @@index([timeEntryId])
   @@map("screenshots")
 }
@@ -141,10 +141,10 @@ model AppActivity {
   category        String?
   durationSeconds Int
   trackedAt       DateTime
-  
-  timeEntryId     String
-  timeEntry       TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
-  
+
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+
   @@index([timeEntryId])
   @@index([trackedAt])
   @@index([domain])

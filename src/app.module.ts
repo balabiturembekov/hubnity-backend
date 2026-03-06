@@ -8,7 +8,7 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
-// import { UsersModule } from "./users/users.module";
+import { UsersModule } from "./users/users.module";
 import { ProjectsModule } from "./projects/projects.module";
 // import { TasksModule } from "./tasks/tasks.module";
 import { TimeEntriesModule } from "./time-entries/time-entries.module";
@@ -105,7 +105,7 @@ import { PayrollModule } from "./payroll/payroll.module";
     PrismaModule,
     AuthModule,
     OrganizationsModule,
-    // UsersModule,
+    UsersModule,
     ProjectsModule,
     // TasksModule,
     TimeEntriesModule,

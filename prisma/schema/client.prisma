@@ -1,57 +1,57 @@
 model Client {
-  id              String   @id @default(uuid())
-  name            String
-  email           String?
-  company         String?
-  billingAddress  String?
-  currency        String   @default("USD")
-  hourlyRate      Float?
-  
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
-  projects        Project[]
-  budgets         ClientBudget[]
-  invoices        ClientInvoice[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id             String  @id @default(uuid())
+  name           String
+  email          String?
+  company        String?
+  billingAddress String?
+  currency       String  @default("USD")
+  hourlyRate     Float?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  projects Project[]
+  budgets  ClientBudget[]
+  invoices ClientInvoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([organizationId])
   @@map("clients")
 }
 
 model ClientBudget {
-  id              String   @id @default(uuid())
-  budgetType      BudgetType
-  hoursLimit      Float?
-  costLimit       Float?
-  startDate       DateTime?
-  endDate         DateTime?
-  notificationThreshold Int @default(80)
-  
-  clientId        String
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  
+  id                    String     @id @default(uuid())
+  budgetType            BudgetType
+  hoursLimit            Float?
+  costLimit             Float?
+  startDate             DateTime?
+  endDate               DateTime?
+  notificationThreshold Int        @default(80)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
   @@map("client_budgets")
 }
 
 model ClientInvoice {
-  id              String   @id @default(uuid())
-  invoiceNumber   String   @unique
-  amount          Float
-  currency        String   @default("USD")
-  status          InvoiceStatus @default(DRAFT)
-  issuedAt        DateTime
-  dueDate         DateTime
-  paidAt          DateTime?
-  pdfUrl          String?
-  
-  clientId        String
-  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  
-  lineItems       InvoiceLineItem[]
-  
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  amount        Float
+  currency      String        @default("USD")
+  status        InvoiceStatus @default(DRAFT)
+  issuedAt      DateTime
+  dueDate       DateTime
+  paidAt        DateTime?
+  pdfUrl        String?
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  lineItems InvoiceLineItem[]
+
   @@index([clientId])
   @@index([status])
   @@index([issuedAt])
@@ -59,17 +59,17 @@ model ClientInvoice {
 }
 
 model InvoiceLineItem {
-  id              String   @id @default(uuid())
-  description     String
-  quantity        Float
-  unitPrice       Float
-  amount          Float
-  
-  invoiceId       String
-  invoice         ClientInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  
-  timeEntryIds    Json?    // Связанные записи времени (массив ID)
-  
+  id          String @id @default(uuid())
+  description String
+  quantity    Float
+  unitPrice   Float
+  amount      Float
+
+  invoiceId String
+  invoice   ClientInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  timeEntryIds Json? // Связанные записи времени (массив ID)
+
   @@map("invoice_line_items")
 }
 
