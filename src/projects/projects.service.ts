@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ProjectStatus,
@@ -259,6 +259,45 @@ export class ProjectsService {
       );
     }
   }
+
+  private async ensureUserHasProjectCreatePrivileges(
+    orgId: string,
+    userId: string,
+  ) {
+    const member = await this.prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: orgId,
+          userId,
+        },
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!member) {
+      throw new EntityNotFoundException(
+        "Organization member",
+        `${orgId}-${userId}`,
+      );
+    }
+
+    const allowedRoles: MemberRole[] = [
+      MemberRole.OWNER,
+      MemberRole.ADMIN,
+      MemberRole.MANAGER,
+    ];
+
+    const hasAccess = allowedRoles.includes(member.role);
+    const isOwner = member.organization.ownerId === userId;
+
+    if (!isOwner || !hasAccess) {
+      throw new ForbiddenException(
+        "You do not have permission to create projects in this organization",
+      );
+    }
+  }
   // Создать проект
   async createProject(
     dto: CreateProjectDto,
@@ -272,7 +311,6 @@ export class ProjectsService {
     );
 
     // 2. Проверяем права (только OWNER, ADMIN или MANAGER могут создавать проекты)
-    // Для этого нужно проверить роль пользователя в организации
     const member = await this.prisma.organizationMember.findUnique({
       where: {
         organizationId_userId: {
