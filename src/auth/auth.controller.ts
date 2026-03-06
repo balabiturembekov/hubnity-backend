@@ -1,32 +1,33 @@
+import { ICurrentUser } from "@/users/user-interface";
+import { UsersService } from "@/users/users.service";
 import {
-  Controller,
-  Post,
-  Get,
   Body,
-  UseGuards,
+  Controller,
+  Get,
   HttpCode,
   HttpStatus,
-  Headers,
-  Param,
-  ParseUUIDPipe,
+  Post,
+  UseGuards,
 } from "@nestjs/common";
-import { Throttle } from "@nestjs/throttler";
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
 } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
-import { LoginDto } from "./dto/login.dto";
-import { RegisterDto } from "./dto/register.dto";
-import { ChangePasswordDto } from "./dto/change-password.dto";
-import { RefreshTokenDto } from "./dto/refresh-token.dto";
-import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { GetUser } from "./decorators/get-user.decorator";
-import { JwtService } from "@nestjs/jwt";
-import { UsersService } from "@/users/users.service";
+import { ChangePasswordDto } from "./dto/change-password.dto";
+import { LoginDto } from "./dto/login.dto";
+import { RefreshTokenDto } from "./dto/refresh-token.dto";
+import { RegisterDto } from "./dto/register.dto";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { AuthResponseDto } from "./dto/auth-response.dto";
+import { TokensResponseDto } from "./dto/tokens-response.dto";
+import { ApiAuth } from "./decorators/api-auth.decorator";
+import { MessageResponseDto } from "@/common/dto/message-response.dto";
 
 // Helper to get throttle limit based on environment
 const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
@@ -38,49 +39,25 @@ const getThrottleLimit = (prodLimit: number, devLimit: number = 100) => {
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly jwtService: JwtService,
     private readonly usersService: UsersService,
   ) {}
 
   @Post("register")
   @HttpCode(HttpStatus.CREATED)
   @Throttle({ default: { limit: getThrottleLimit(3, 100), ttl: 60000 } })
-  @ApiOperation({ summary: "Регистрация нового пользователя" })
+  @ApiOperation({
+    summary: "Register a new user",
+    description: "Registers a new user and returns a JWT token.",
+  })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
     status: 201,
     description: "Пользователь успешно создан",
-    schema: {
-      type: "object",
-      properties: {
-        user: {
-          type: "object",
-          properties: {
-            id: { type: "string", example: "uuid" },
-            firstName: { type: "string", example: "Иван" },
-            lastName: { type: "string", example: "Иванов" },
-            email: { type: "string", example: "user@example.com" },
-            avatar: {
-              type: "string",
-              nullable: true,
-              example: "https://example.com/avatar.jpg",
-            },
-            createdAt: { type: "string", format: "date-time" },
-            updatedAt: { type: "string", format: "date-time" },
-            deletedAt: { type: "string", format: "date-time", nullable: true },
-          },
-        },
-        access_token: {
-          type: "string",
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        },
-        refresh_token: { type: "string", example: "refresh-token-here" },
-      },
-    },
+    type: AuthResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Неверные данные запроса" })
-  @ApiResponse({ status: 409, description: "Пользователь уже существует" })
-  @ApiResponse({ status: 500, description: "Внутренняя ошибка сервера" })
+  @ApiResponse({ status: 400, description: "Invalid request data" })
+  @ApiResponse({ status: 409, description: "User already exists" })
+  @ApiResponse({ status: 500, description: "Internal server error" })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
@@ -89,41 +66,16 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: getThrottleLimit(5, 100), ttl: 60000 } })
   @ApiOperation({
-    summary: "Вход в систему",
-    description:
-      "Аутентификация пользователя по email и паролю. Возвращает JWT токен.",
+    summary: "Login a user",
+    description: "Authenticates a user and returns a JWT token.",
   })
-  @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
-    description: "Успешный вход",
-    schema: {
-      type: "object",
-      properties: {
-        user: {
-          type: "object",
-          properties: {
-            id: { type: "string", example: "uuid" },
-            name: { type: "string", example: "Иван Иванов" },
-            email: { type: "string", example: "user@example.com" },
-            avatar: {
-              type: "string",
-              nullable: true,
-              example: "https://example.com/avatar.jpg",
-            },
-            hourlyRate: { type: "number", nullable: true, example: 25.5 },
-          },
-        },
-        access_token: {
-          type: "string",
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        },
-        refresh_token: { type: "string", example: "refresh-token-here" },
-      },
-    },
+    description: "Successful login",
+    type: AuthResponseDto,
   })
-  @ApiResponse({ status: 401, description: "Неверные учетные данные" })
-  @ApiResponse({ status: 400, description: "Неверные данные запроса" })
+  @ApiResponse({ status: 401, description: "Invalid credentials" })
+  @ApiResponse({ status: 400, description: "Invalid request data" })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -132,14 +84,13 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
-    summary: "Получить текущего пользователя",
+    summary: "Get current user",
     description:
-      "Возвращает полную информацию о текущем пользователе. Рекомендуется использовать GET /users/me для единообразия.",
+      "Returns full information about the current user. Recommended to use GET /users/me for consistency.",
   })
-  @ApiResponse({ status: 401, description: "Не авторизован" })
-  @ApiResponse({ status: 404, description: "Пользователь не найден" })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async getProfile(@GetUser() user: any) {
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  @ApiResponse({ status: 404, description: "User not found" })
+  async getProfile(@GetUser() user: ICurrentUser) {
     return this.usersService.findOne(user.id);
   }
 
@@ -147,58 +98,45 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: getThrottleLimit(10, 200), ttl: 60000 } })
   @ApiOperation({
-    summary: "Обновить access token",
+    summary: "Refresh access token",
     description:
-      "Обновляет access token используя refresh token. Возвращает новую пару токенов.",
+      "Refreshes access token using refresh token. Returns a new pair of tokens.",
   })
   @ApiBody({ type: RefreshTokenDto })
   @ApiResponse({
     status: 200,
-    description: "Токены успешно обновлены",
-    schema: {
-      type: "object",
-      properties: {
-        access_token: {
-          type: "string",
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-        },
-        refresh_token: { type: "string", example: "refresh-token-here" },
-      },
-    },
+    description: "Successfully refreshed tokens",
+    type: TokensResponseDto,
   })
   @ApiResponse({
     status: 401,
-    description: "Неверный или истекший refresh token",
+    description: "Invalid or expired refresh token",
   })
   async refreshToken(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshToken(dto);
   }
 
   @Post("change-password")
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth("JWT-auth")
+  @ApiAuth()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: getThrottleLimit(5, 100), ttl: 60000 } })
   @ApiOperation({
-    summary: "Сменить пароль",
+    summary: "Change password",
     description:
-      "Изменяет пароль текущего пользователя. Требует текущий пароль для подтверждения.",
+      "Changes the password of the current user. Requires the current password for confirmation.",
   })
   @ApiBody({ type: ChangePasswordDto })
   @ApiResponse({
     status: 200,
-    description: "Пароль успешно изменен",
-    schema: {
-      type: "object",
-      properties: {
-        message: { type: "string", example: "Password changed successfully" },
-      },
-    },
+    description: "Password changed successfully",
+    type: MessageResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Неверные данные запроса" })
-  @ApiResponse({ status: 401, description: "Неверный текущий пароль" })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async changePassword(@GetUser() user: any, @Body() dto: ChangePasswordDto) {
+  @ApiResponse({ status: 400, description: "Invalid request data" })
+  @ApiResponse({ status: 401, description: "Invalid current password" })
+  async changePassword(
+    @GetUser() user: ICurrentUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
     return this.authService.changePassword(user.id, dto);
   }
 

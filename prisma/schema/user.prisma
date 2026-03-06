@@ -26,6 +26,9 @@ model User {
   timeOffRequests         TimeOffRequest[]
   inviteLinks             InviteLink[]
 
+  resetPasswordToken      String?     @unique
+  resetPasswordExpires    DateTime?
+
   @@map("users")
 }
 

@@ -16,6 +16,8 @@ import { PinoLogger } from "nestjs-pino";
 import * as bcrypt from "bcrypt";
 import { randomBytes } from "crypto";
 import { Prisma } from "@prisma/client";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 
 @Injectable()
 export class AuthService {
@@ -334,5 +336,90 @@ export class AuthService {
     );
 
     return { message: "Logged out successfully" };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (!user) {
+      this.logger.warn(
+        {
+          email: dto.email,
+        },
+        "Failed to send password reset link - user not found",
+      );
+      return {
+        message:
+          "If an account with that email exists, a password reset link has been sent",
+      };
+    }
+
+    const resetPasswordToken = this.generateSecureToken();
+    const resetPasswordExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetPasswordToken,
+        resetPasswordExpires,
+      },
+    });
+
+    this.logger.info(
+      {
+        userId: user.id,
+        email: user.email,
+        resetPasswordToken,
+      },
+      "Password reset link sent",
+    );
+
+    return {
+      message:
+        "If an account with that email exists, a password reset link has been sent",
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { resetPasswordToken: dto.token },
+    });
+
+    const isExpired = user && user.resetPasswordExpires < new Date();
+
+    if (!user || isExpired) {
+      this.logger.warn(
+        {
+          token: dto.token,
+        },
+        "Failed to reset password - invalid or expired token",
+      );
+      throw new UnauthorizedException("Invalid or expired token");
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 12);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+    });
+
+    this.logger.info(
+      {
+        userId: user.id,
+        email: user.email,
+      },
+      "Password reset successfully",
+    );
+
+    return {
+      message: "Password has been reset successfully",
+    };
   }
 }
