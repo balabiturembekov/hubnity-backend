@@ -18,8 +18,6 @@ model User {
 
   ownedOrganizations Organization[] @relation("Owner")
 
-  role UserRole @default(USER)
-
   invitationsSent     Invitation[] @relation("Invitation") // приглашения, которые отправил
   invitationsReceived Invitation[] @relation("InvitedUser") // приглашения, которые получил
 

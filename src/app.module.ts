@@ -16,6 +16,7 @@ import { TimeEntriesModule } from "./time-entries/time-entries.module";
 import { ReportsModule } from "./reports/reports.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { PayrollModule } from "./payroll/payroll.module";
+import { InvitationsModule } from "./invitations/invitations.module";
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { PayrollModule } from "./payroll/payroll.module";
     PayrollModule,
     // DashboardModule,
     ReportsModule,
+    InvitationsModule,
   ],
   controllers: [AppController],
   providers: [

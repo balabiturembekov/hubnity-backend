@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { TeamSize } from "@prisma/client";
 
 export class OrganizationResponseDto {
   @ApiProperty({ example: "123e4567-e89b-12d3-a456-426614174000" })
@@ -33,4 +34,7 @@ export class OrganizationResponseDto {
 
   @ApiPropertyOptional({ example: 3 })
   clientsCount?: number;
+
+  @ApiPropertyOptional({ example: "SIZE_3_6" })
+  teamSize: TeamSize;
 }

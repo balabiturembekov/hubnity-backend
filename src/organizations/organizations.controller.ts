@@ -116,7 +116,7 @@ export class OrganizationsController {
     @Param("id", ParseUUIDPipe) organizationId: string,
     @GetUser("id") currentUserId: string,
   ): Promise<OrganizationResponseDto> {
-    return this.organizationService.getOrganizationById(
+    return this.organizationService.getOrganizationByIdForUser(
       organizationId,
       currentUserId,
     );

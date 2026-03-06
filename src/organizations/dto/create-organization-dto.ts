@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsArray,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -7,9 +8,25 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateNested,
+  IsEmail,
+  IsEnum,
+  ArrayMaxSize,
 } from "class-validator";
+import { Type } from "class-transformer";
+import { MemberRole, TeamSize } from "@prisma/client";
 
 // ==================== ORGANIZATION DTOs ====================
+
+export class InvitedOrganizationUserDto {
+  @ApiProperty({ example: "manager@example.com" })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ enum: MemberRole, example: MemberRole.MANAGER })
+  @IsEnum(MemberRole)
+  role: MemberRole;
+}
 
 export class CreateOrganizationDto {
   @ApiProperty({ description: "Organization name", example: "Acme Inc." })
@@ -54,6 +71,25 @@ export class CreateOrganizationDto {
   @MinLength(3, { message: "Currency code must be 3 characters" })
   @MaxLength(3, { message: "Currency code must be 3 characters" })
   currency?: string = "USD";
+
+  @ApiPropertyOptional({
+    description: "Optional invitations sent on organization creation",
+    type: [InvitedOrganizationUserDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => InvitedOrganizationUserDto)
+  invitedUsers?: InvitedOrganizationUserDto[];
+
+  @ApiProperty({
+    description: "Organization team size",
+    enum: TeamSize,
+    example: TeamSize.SIZE_3_6,
+  })
+  @IsEnum(TeamSize)
+  teamSize: TeamSize;
 }
 
 export class OrganizationStatsResponseDto {

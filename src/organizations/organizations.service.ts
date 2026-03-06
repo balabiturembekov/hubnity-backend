@@ -2,6 +2,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { MemberRole, MemberStatus, Prisma } from "@prisma/client";
+import { randomBytes } from "crypto";
 
 import { CreateOrganizationDto } from "./dto/create-organization-dto";
 import { UpdateOrganizationDto } from "./dto/update-organization-dto";
@@ -200,6 +201,37 @@ export class OrganizationService {
   ): Promise<OrganizationResponseDto> {
     this.logger.log(`Creating organization for user ${currentUserId}`);
 
+    const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+    const invitedUsers = (dto.invitedUsers ?? []).map((u) => ({
+      email: normalizeEmail(u.email),
+      role: u.role,
+    }));
+
+    // Validate invited users (managers + members only)
+    for (const invite of invitedUsers) {
+      if (
+        invite.role !== MemberRole.MANAGER &&
+        invite.role !== MemberRole.USER
+      ) {
+        throw new InvalidOperationException(
+          "Only MANAGER or USER invitations are supported",
+        );
+      }
+    }
+
+    const emailSet = new Set<string>();
+    for (const invite of invitedUsers) {
+      if (emailSet.has(invite.email)) {
+        throw new DuplicateEntityException(
+          "Invitation",
+          "email",
+          `Duplicate invited email: ${invite.email}`,
+        );
+      }
+      emailSet.add(invite.email);
+    }
+
     // 1. Валидация прав
     if (dto.ownerId !== currentUserId) {
       throw new PermissionDeniedException(
@@ -224,6 +256,7 @@ export class OrganizationService {
             settings: dto.settings ?? {},
             timezone: dto.timezone ?? "UTC",
             currency: dto.currency ?? "USD",
+            teamSize: dto.teamSize,
           },
         });
 
@@ -239,6 +272,64 @@ export class OrganizationService {
             settings: {},
           },
         });
+
+        if (invitedUsers.length > 0) {
+          // Create invitations for provided emails (managers/members)
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+          // Prefetch existing users by email to set userId when applicable
+          const existingUsers = await tx.user.findMany({
+            where: { email: { in: invitedUsers.map((u) => u.email) } },
+            select: { id: true, email: true },
+          });
+          const userIdByEmail = new Map(
+            existingUsers.map((u) => [normalizeEmail(u.email), u.id]),
+          );
+
+          // Prevent inviting the owner
+          const owner = await tx.user.findUnique({
+            where: { id: dto.ownerId },
+            select: { id: true, email: true },
+          });
+          const ownerEmail = owner?.email ? normalizeEmail(owner.email) : null;
+
+          for (const invite of invitedUsers) {
+            if (ownerEmail && invite.email === ownerEmail) {
+              throw new InvalidOperationException("Owner cannot be invited");
+            }
+
+            // Prevent creating duplicate pending invitations (within same org)
+            const alreadyInvited = await tx.invitation.findFirst({
+              where: {
+                organizationId: org.id,
+                email: invite.email,
+                acceptedAt: null,
+                expiresAt: { gt: new Date() },
+              },
+              select: { id: true },
+            });
+            if (alreadyInvited) {
+              throw new DuplicateEntityException(
+                "Invitation",
+                "email",
+                `Pending invitation already exists for ${invite.email}`,
+              );
+            }
+
+            const token = randomBytes(32).toString("hex");
+            await tx.invitation.create({
+              data: {
+                email: invite.email,
+                role: invite.role,
+                token,
+                expiresAt,
+                organizationId: org.id,
+                invitedById: dto.ownerId,
+                userId: userIdByEmail.get(invite.email) ?? null,
+              },
+            });
+          }
+        }
 
         // Возвращаем организацию с участниками
         return tx.organization.findUnique({
@@ -309,10 +400,35 @@ export class OrganizationService {
     return organizations.map((org) => this.mapToOrganizationResponse(org));
   }
 
+  async getOrganizationById(
+    organizationId: string,
+  ): Promise<OrganizationResponseDto> {
+    this.logger.log(`Fetching organization ${organizationId}`);
+
+    const organization = await this.prisma.organization.findFirst({
+      where: { id: organizationId },
+    });
+
+    if (!organization) {
+      throw new EntityNotFoundException("Organization", organizationId);
+    }
+
+    return this.mapToOrganizationResponse(organization);
+  }
+
+  async isMemberOfOrganization(
+    userId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    return !!(await this.prisma.organizationMember.findFirst({
+      where: { userId, organizationId },
+    }));
+  }
+
   /**
    * Получает детальную информацию об организации
    */
-  async getOrganizationById(
+  async getOrganizationByIdForUser(
     organizationId: string,
     userId: string,
   ): Promise<OrganizationResponseDto> {
@@ -888,6 +1004,7 @@ export class OrganizationService {
       membersCount: org._count?.members ?? org.members?.length,
       projectsCount: org._count?.projects,
       clientsCount: org._count?.clients,
+      teamSize: org.teamSize,
     };
   }
 
