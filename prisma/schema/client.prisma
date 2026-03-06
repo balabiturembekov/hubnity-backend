@@ -1,21 +1,18 @@
 model Client {
-  id             String  @id @default(uuid())
+  id             String          @id @default(uuid())
   name           String
   email          String?
   company        String?
   billingAddress String?
-  currency       String  @default("USD")
+  currency       String          @default("USD")
   hourlyRate     Float?
-
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  projects Project[]
-  budgets  ClientBudget[]
-  invoices ClientInvoice[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  budgets        ClientBudget[]
+  invoices       ClientInvoice[]
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects       Project[]
 
   @@index([organizationId])
   @@map("clients")
@@ -29,28 +26,25 @@ model ClientBudget {
   startDate             DateTime?
   endDate               DateTime?
   notificationThreshold Int        @default(80)
-
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId              String
+  client                Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@map("client_budgets")
 }
 
 model ClientInvoice {
-  id            String        @id @default(uuid())
-  invoiceNumber String        @unique
+  id            String            @id @default(uuid())
+  invoiceNumber String            @unique
   amount        Float
-  currency      String        @default("USD")
-  status        InvoiceStatus @default(DRAFT)
+  currency      String            @default("USD")
+  status        InvoiceStatus     @default(DRAFT)
   issuedAt      DateTime
   dueDate       DateTime
   paidAt        DateTime?
   pdfUrl        String?
-
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  lineItems InvoiceLineItem[]
+  clientId      String
+  client        Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  lineItems     InvoiceLineItem[]
 
   @@index([clientId])
   @@index([status])
@@ -59,16 +53,14 @@ model ClientInvoice {
 }
 
 model InvoiceLineItem {
-  id          String @id @default(uuid())
-  description String
-  quantity    Float
-  unitPrice   Float
-  amount      Float
-
-  invoiceId String
-  invoice   ClientInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
-  timeEntryIds Json? // Связанные записи времени (массив ID)
+  id           String        @id @default(uuid())
+  description  String
+  quantity     Float
+  unitPrice    Float
+  amount       Float
+  invoiceId    String
+  timeEntryIds Json?
+  invoice      ClientInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@map("invoice_line_items")
 }

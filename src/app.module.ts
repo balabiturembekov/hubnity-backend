@@ -17,6 +17,7 @@ import { ReportsModule } from "./reports/reports.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { InvitationsModule } from "./invitations/invitations.module";
+import { OrganizationGoalsModule } from './organization-goals/organization-goals.module';
 
 @Module({
   imports: [
@@ -114,6 +115,7 @@ import { InvitationsModule } from "./invitations/invitations.module";
     // DashboardModule,
     ReportsModule,
     InvitationsModule,
+    OrganizationGoalsModule,
   ],
   controllers: [AppController],
   providers: [

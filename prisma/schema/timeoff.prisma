@@ -1,16 +1,14 @@
 model TimeOffPolicy {
-  id               String      @id @default(uuid())
+  id               String           @id @default(uuid())
   name             String
   type             TimeOffType
-  daysAllowed      Int // Количество дней в год
-  accrualRate      Float? // Начисление в месяц (например, 2.5 дня)
-  carryOver        Int? // Перенос остатка на следующий год
-  requiresApproval Boolean     @default(true)
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  requests TimeOffRequest[]
+  daysAllowed      Int
+  accrualRate      Float?
+  carryOver        Int?
+  requiresApproval Boolean          @default(true)
+  organizationId   String
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requests         TimeOffRequest[]
 
   @@map("time_off_policies")
 }
@@ -24,13 +22,11 @@ model TimeOffRequest {
   reason       String?
   approvedById String?
   approvedAt   DateTime?
-
-  userId   String
-  policyId String
-
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  policy     TimeOffPolicy @relation(fields: [policyId], references: [id])
-  approvedBy User?         @relation("Approver", fields: [approvedById], references: [id])
+  userId       String
+  policyId     String
+  approvedBy   User?         @relation("Approver", fields: [approvedById], references: [id])
+  policy       TimeOffPolicy @relation(fields: [policyId], references: [id])
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@index([startDate, endDate])

@@ -1,6 +1,6 @@
 // services/organization.service.ts
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
+import { PrismaService } from "@/prisma/prisma.service";
 import { MemberRole, MemberStatus, Prisma } from "@prisma/client";
 import { randomBytes } from "crypto";
 
@@ -22,7 +22,7 @@ import {
   PermissionDeniedException,
   DuplicateEntityException,
   InvalidOperationException,
-} from "../exceptions/business.exception";
+} from "@/exceptions/business.exception";
 
 @Injectable()
 export class OrganizationService {
