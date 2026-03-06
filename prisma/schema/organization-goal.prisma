@@ -1,8 +1,9 @@
 model OrganizationGoal {
-  id        String  @id @default(uuid())
-  title     String
-  subTitle  String
-  isPopular Boolean
+  id             String         @id @default(uuid())
+  title          String
+  subTitle       String
+  isPopular      Boolean
+  organizations  Organization[]
 
   @@index([id])
   @@map("organization_goals")

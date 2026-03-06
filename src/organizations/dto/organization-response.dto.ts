@@ -1,6 +1,20 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { TeamSize } from "@prisma/client";
 
+export class OrganizationGoalItemDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty()
+  subTitle: string;
+
+  @ApiProperty()
+  isPopular: boolean;
+}
+
 export class OrganizationResponseDto {
   @ApiProperty({ example: "123e4567-e89b-12d3-a456-426614174000" })
   id: string;
@@ -37,4 +51,10 @@ export class OrganizationResponseDto {
 
   @ApiPropertyOptional({ example: "SIZE_3_6" })
   teamSize: TeamSize;
+
+  @ApiPropertyOptional({
+    description: "Organization goals (when included in the response)",
+    type: [OrganizationGoalItemDto],
+  })
+  goals?: OrganizationGoalItemDto[];
 }

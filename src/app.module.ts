@@ -18,6 +18,7 @@ import { OrganizationsModule } from "./organizations/organizations.module";
 import { PayrollModule } from "./payroll/payroll.module";
 import { InvitationsModule } from "./invitations/invitations.module";
 import { OrganizationGoalsModule } from './organization-goals/organization-goals.module';
+import { InviteLinkModule } from './invite-link/invite-link.module';
 
 @Module({
   imports: [
@@ -116,6 +117,7 @@ import { OrganizationGoalsModule } from './organization-goals/organization-goals
     ReportsModule,
     InvitationsModule,
     OrganizationGoalsModule,
+    InviteLinkModule,
   ],
   controllers: [AppController],
   providers: [

@@ -17,6 +17,8 @@ model Organization {
   projects            Project[]
   timeOffPolicies     TimeOffPolicy[]
   teamSize            TeamSize
+  inviteLinks         InviteLink[]
+  goals               OrganizationGoal[]
 
   @@map("organizations")
 }

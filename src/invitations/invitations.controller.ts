@@ -34,7 +34,10 @@ export class InvitationsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   @ApiResponse({ status: 403, description: "Forbidden" })
   @ApiResponse({ status: 404, description: "Organization not found" })
-  @ApiResponse({ status: 409, description: "Conflict (already invited/member)" })
+  @ApiResponse({
+    status: 409,
+    description: "Conflict (already invited/member)",
+  })
   async sendInvitation(
     @GetUser("id") currentUserId: string,
     @Body() dto: SendInvitationDto,
@@ -49,7 +52,10 @@ export class InvitationsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   @ApiResponse({ status: 403, description: "Forbidden (not your invite)" })
   @ApiResponse({ status: 404, description: "Invitation not found" })
-  @ApiResponse({ status: 409, description: "Conflict (expired/accepted/member)" })
+  @ApiResponse({
+    status: 409,
+    description: "Conflict (expired/accepted/member)",
+  })
   async acceptInvitation(
     @Param("token") token: string,
     @GetUser("id") currentUserId: string,

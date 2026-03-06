@@ -12,6 +12,7 @@ import {
   UpdateOrganizationMemberDto,
   AddOrganizationMemberDto,
 } from "./dto/organization-member.dto";
+import { AddOrganizationGoalsDto } from "./dto/organization-goals.dto";
 import {
   HolidayResponseDto,
   CreateHolidayDto,
@@ -193,12 +194,17 @@ export class OrganizationService {
   // ==================== ORGANIZATION CRUD ====================
 
   /**
-   * Создает новую организацию и автоматически добавляет владельца как участника
+   * Создает новую организацию, добавляет владельца как участника.
+   * Опционально создаёт email-приглашения и/или invite links в той же транзакции.
+   * Если передан dto.inviteLinks, в ответе вернётся { organization, inviteLinks }.
    */
   async createOrganization(
     dto: CreateOrganizationDto,
     currentUserId: string,
-  ): Promise<OrganizationResponseDto> {
+  ): Promise<
+    | OrganizationResponseDto
+    | { organization: OrganizationResponseDto; inviteLinks: Array<Record<string, unknown>> }
+  > {
     this.logger.log(`Creating organization for user ${currentUserId}`);
 
     const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -230,6 +236,16 @@ export class OrganizationService {
         );
       }
       emailSet.add(invite.email);
+    }
+
+    const inviteLinkOptions = dto.inviteLinks ?? [];
+    for (const opt of inviteLinkOptions) {
+      const role = opt.role ?? MemberRole.USER;
+      if (role !== MemberRole.MANAGER && role !== MemberRole.USER) {
+        throw new InvalidOperationException(
+          "Only MANAGER or USER roles are supported for invite links",
+        );
+      }
     }
 
     // 1. Валидация прав
@@ -331,13 +347,77 @@ export class OrganizationService {
           }
         }
 
-        // Возвращаем организацию с участниками
-        return tx.organization.findUnique({
+        const createdInviteLinks: Array<{
+          id: string;
+          token: string;
+          role: MemberRole;
+          expiresAt: Date | null;
+          maxUses: number | null;
+          useCount: number;
+          isActive: boolean;
+          createdAt: Date;
+        }> = [];
+
+        if (inviteLinkOptions.length > 0) {
+          for (const opt of inviteLinkOptions) {
+            const token = randomBytes(32).toString("hex");
+            const expiresAt = opt.expiresInDays
+              ? new Date(
+                  Date.now() + opt.expiresInDays * 24 * 60 * 60 * 1000,
+                )
+              : null;
+            const link = await tx.inviteLink.create({
+              data: {
+                token,
+                role: opt.role ?? MemberRole.USER,
+                organizationId: org.id,
+                createdById: dto.ownerId,
+                expiresAt,
+                maxUses: opt.maxUses ?? null,
+              },
+            });
+            createdInviteLinks.push({
+              id: link.id,
+              token: link.token,
+              role: link.role,
+              expiresAt: link.expiresAt,
+              maxUses: link.maxUses,
+              useCount: link.useCount,
+              isActive: link.isActive,
+              createdAt: link.createdAt,
+            });
+          }
+        }
+
+        const goalIds = dto.goalIds ?? [];
+        if (goalIds.length > 0) {
+          const existingGoals = await tx.organizationGoal.findMany({
+            where: { id: { in: goalIds } },
+            select: { id: true },
+          });
+          const existingIds = new Set(existingGoals.map((g) => g.id));
+          const missing = goalIds.filter((id) => !existingIds.has(id));
+          if (missing.length > 0) {
+            throw new EntityNotFoundException(
+              "OrganizationGoal",
+              missing.join(", "),
+            );
+          }
+          await tx.organization.update({
+            where: { id: org.id },
+            data: {
+              goals: { connect: goalIds.map((id) => ({ id })) },
+            },
+          });
+        }
+
+        const organization = await tx.organization.findUnique({
           where: { id: org.id },
           include: {
             members: {
               include: this.memberInclude,
             },
+            goals: true,
             _count: {
               select: {
                 projects: true,
@@ -347,9 +427,15 @@ export class OrganizationService {
             },
           },
         });
+
+        return { organization, createdInviteLinks };
       });
 
-      return this.mapToOrganizationResponse(organization);
+      const orgResponse = this.mapToOrganizationResponse(organization.organization);
+      if (organization.createdInviteLinks.length > 0) {
+        return { organization: orgResponse, inviteLinks: organization.createdInviteLinks };
+      }
+      return orgResponse;
     } catch (error) {
       this.logger.error(
         `Failed to create organization: ${error.message}`,
@@ -382,6 +468,9 @@ export class OrganizationService {
           include: this.memberInclude,
           take: 5, // Ограничиваем количество возвращаемых участников
         },
+        goals: {
+          select: { id: true, title: true, subTitle: true, isPopular: true },
+        },
         _count: {
           select: {
             projects: true,
@@ -407,6 +496,7 @@ export class OrganizationService {
 
     const organization = await this.prisma.organization.findFirst({
       where: { id: organizationId },
+      include: { goals: true },
     });
 
     if (!organization) {
@@ -469,6 +559,9 @@ export class OrganizationService {
         },
         holidays: {
           orderBy: { date: "asc" },
+        },
+        goals: {
+          select: { id: true, title: true, subTitle: true, isPopular: true },
         },
         _count: {
           select: {
@@ -657,6 +750,101 @@ export class OrganizationService {
     });
 
     return members.map((member) => this.mapToMemberResponse(member));
+  }
+
+  /**
+   * Gets the goals assigned to an organization (from the global goals catalog).
+   */
+  async getOrganizationGoals(
+    organizationId: string,
+    userId: string,
+  ): Promise<OrganizationResponseDto["goals"]> {
+    await this.validateMemberAccess(organizationId, userId);
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        goals: {
+          select: { id: true, title: true, subTitle: true, isPopular: true },
+        },
+      },
+    });
+
+    if (!org) throw new EntityNotFoundException("Organization", organizationId);
+    return org.goals;
+  }
+
+  /**
+   * Adds goals (from the global catalog) to an organization.
+   */
+  async addGoalsToOrganization(
+    organizationId: string,
+    dto: AddOrganizationGoalsDto,
+    userId: string,
+  ): Promise<OrganizationResponseDto["goals"]> {
+    await this.validateMemberAccess(organizationId, userId, [
+      MemberRole.OWNER,
+      MemberRole.ADMIN,
+      MemberRole.MANAGER,
+    ]);
+
+    const existingGoals = await this.prisma.organizationGoal.findMany({
+      where: { id: { in: dto.goalIds } },
+      select: { id: true },
+    });
+    const existingIds = new Set(existingGoals.map((g) => g.id));
+    const missing = dto.goalIds.filter((id) => !existingIds.has(id));
+    if (missing.length > 0) {
+      throw new EntityNotFoundException(
+        "OrganizationGoal",
+        missing.join(", "),
+      );
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        goals: { connect: dto.goalIds.map((id) => ({ id })) },
+      },
+    });
+
+    return this.getOrganizationGoals(organizationId, userId);
+  }
+
+  /**
+   * Removes a goal from an organization (disconnects the relation).
+   */
+  async removeGoalFromOrganization(
+    organizationId: string,
+    goalId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.validateMemberAccess(organizationId, userId, [
+      MemberRole.OWNER,
+      MemberRole.ADMIN,
+      MemberRole.MANAGER,
+    ]);
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        goals: { where: { id: goalId }, select: { id: true } },
+      },
+    });
+
+    if (!org) throw new EntityNotFoundException("Organization", organizationId);
+    if (!org.goals.length) {
+      throw new InvalidOperationException(
+        "Goal is not assigned to this organization",
+      );
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        goals: { disconnect: { id: goalId } },
+      },
+    });
   }
 
   /**
@@ -992,7 +1180,7 @@ export class OrganizationService {
   // ==================== PRIVATE MAPPERS ====================
 
   private mapToOrganizationResponse(org: any): OrganizationResponseDto {
-    return {
+    const response: OrganizationResponseDto = {
       id: org.id,
       name: org.name,
       ownerId: org.ownerId,
@@ -1006,6 +1194,15 @@ export class OrganizationService {
       clientsCount: org._count?.clients,
       teamSize: org.teamSize,
     };
+    if (org.goals?.length) {
+      response.goals = org.goals.map((g: { id: string; title: string; subTitle: string; isPopular: boolean }) => ({
+        id: g.id,
+        title: g.title,
+        subTitle: g.subTitle,
+        isPopular: g.isPopular,
+      }));
+    }
+    return response;
   }
 
   private mapToMemberResponse(member: any): OrganizationMemberResponseDto {

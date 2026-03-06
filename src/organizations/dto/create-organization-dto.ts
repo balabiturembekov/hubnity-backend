@@ -12,9 +12,12 @@ import {
   IsEmail,
   IsEnum,
   ArrayMaxSize,
+  IsInt,
+  Min,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { MemberRole, TeamSize } from "@prisma/client";
+import { OrganizationResponseDto } from "./organization-response.dto";
 
 // ==================== ORGANIZATION DTOs ====================
 
@@ -26,6 +29,38 @@ export class InvitedOrganizationUserDto {
   @ApiProperty({ enum: MemberRole, example: MemberRole.MANAGER })
   @IsEnum(MemberRole)
   role: MemberRole;
+}
+
+/** Options for creating an invite link during organization creation (no organizationId needed). */
+export class InviteLinkOptionDto {
+  @ApiPropertyOptional({
+    description: "Role to assign when joining via link (MANAGER or USER only)",
+    enum: MemberRole,
+    default: MemberRole.USER,
+  })
+  @IsEnum(MemberRole)
+  @IsOptional()
+  role?: MemberRole = MemberRole.USER;
+
+  @ApiPropertyOptional({
+    description: "Link expiry in days. Omit for no expiry",
+    minimum: 1,
+    example: 7,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  expiresInDays?: number;
+
+  @ApiPropertyOptional({
+    description: "Maximum number of uses. Omit for unlimited",
+    minimum: 1,
+    example: 10,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  maxUses?: number;
 }
 
 export class CreateOrganizationDto {
@@ -83,6 +118,32 @@ export class CreateOrganizationDto {
   @Type(() => InvitedOrganizationUserDto)
   invitedUsers?: InvitedOrganizationUserDto[];
 
+  @ApiPropertyOptional({
+    description:
+      "Optional invite links to create with the organization (share link so others can join)",
+    type: [InviteLinkOptionDto],
+    maxItems: 10,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => InviteLinkOptionDto)
+  inviteLinks?: InviteLinkOptionDto[];
+
+  @ApiPropertyOptional({
+    description:
+      "Optional organization goal IDs to assign to this organization (from the global goals catalog)",
+    type: [String],
+    example: ["123e4567-e89b-12d3-a456-426614174000"],
+    maxItems: 50,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID("4", { each: true })
+  goalIds?: string[];
+
   @ApiProperty({
     description: "Organization team size",
     enum: TeamSize,
@@ -90,6 +151,40 @@ export class CreateOrganizationDto {
   })
   @IsEnum(TeamSize)
   teamSize: TeamSize;
+}
+
+/** Response when organization is created with optional invite links (when inviteLinks was in the request). */
+export class CreateOrganizationWithInviteLinksResponseDto {
+  @ApiProperty({ type: OrganizationResponseDto })
+  organization: OrganizationResponseDto;
+
+  @ApiProperty({
+    description: "Invite links created with the organization",
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        token: { type: "string" },
+        role: { enum: ["OWNER", "ADMIN", "MANAGER", "USER"] },
+        expiresAt: { type: "string", format: "date-time", nullable: true },
+        maxUses: { type: "number", nullable: true },
+        useCount: { type: "number" },
+        isActive: { type: "boolean" },
+        createdAt: { type: "string", format: "date-time" },
+      },
+    },
+  })
+  inviteLinks: Array<{
+    id: string;
+    token: string;
+    role: MemberRole;
+    expiresAt: Date | null;
+    maxUses: number | null;
+    useCount: number;
+    isActive: boolean;
+    createdAt: Date;
+  }>;
 }
 
 export class OrganizationStatsResponseDto {

@@ -40,6 +40,12 @@ import {
   OrganizationMemberResponseDto,
   UpdateOrganizationMemberDto,
 } from "./dto/organization-member.dto";
+import {
+  AddOrganizationGoalsDto,
+} from "./dto/organization-goals.dto";
+import {
+  OrganizationGoalItemDto,
+} from "./dto/organization-response.dto";
 import { JwtAuthGuard } from "@/auth/guards/jwt-auth.guard";
 
 @ApiTags("organizations")
@@ -49,10 +55,15 @@ export class OrganizationsController {
   constructor(private organizationService: OrganizationService) {}
 
   @Post()
-  @ApiOperation({ summary: "Create a new organization" })
+  @ApiOperation({
+    summary: "Create a new organization",
+    description:
+      "Creates organization and adds owner as member. Optionally send email invitations (invitedUsers) and/or create invite links (inviteLinks). When inviteLinks is provided, response is { organization, inviteLinks }.",
+  })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: "Organization created successfully",
+    description:
+      "Organization created. If inviteLinks was sent in the request, response is { organization, inviteLinks }.",
     type: OrganizationResponseDto,
   })
   @ApiResponse({
@@ -230,6 +241,96 @@ export class OrganizationsController {
     return this.organizationService.addMember(
       organizationId,
       addMemberDto,
+      currentUserId,
+    );
+  }
+
+  @Get(":id/goals")
+  @ApiOperation({
+    summary: "Get organization goals",
+    description:
+      "Returns the goals assigned to this organization (from the global goals catalog).",
+  })
+  @ApiParam({ name: "id", description: "Organization ID" })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Organization goals",
+    type: [OrganizationGoalItemDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Organization not found",
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: "Access denied" })
+  async getOrganizationGoals(
+    @Param("id", ParseUUIDPipe) organizationId: string,
+    @GetUser("id") currentUserId: string,
+  ) {
+    return this.organizationService.getOrganizationGoals(
+      organizationId,
+      currentUserId,
+    );
+  }
+
+  @Post(":id/goals")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Add goals to organization",
+    description:
+      "Add goals (from the global catalog) to the organization. OWNER, ADMIN, or MANAGER only.",
+  })
+  @ApiParam({ name: "id", description: "Organization ID" })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Goals added; returns updated list of organization goals",
+    type: [OrganizationGoalItemDto],
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Organization or one of the goals not found",
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: "Access denied" })
+  async addGoalsToOrganization(
+    @Param("id", ParseUUIDPipe) organizationId: string,
+    @Body() dto: AddOrganizationGoalsDto,
+    @GetUser("id") currentUserId: string,
+  ) {
+    return this.organizationService.addGoalsToOrganization(
+      organizationId,
+      dto,
+      currentUserId,
+    );
+  }
+
+  @Delete(":id/goals/:goalId")
+  @ApiOperation({
+    summary: "Remove goal from organization",
+    description:
+      "Disconnects a goal from the organization. OWNER, ADMIN, or MANAGER only.",
+  })
+  @ApiParam({ name: "id", description: "Organization ID" })
+  @ApiParam({ name: "goalId", description: "Organization goal ID" })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Goal removed from organization",
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: "Goal is not assigned to this organization",
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: "Organization not found",
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: "Access denied" })
+  async removeGoalFromOrganization(
+    @Param("id", ParseUUIDPipe) organizationId: string,
+    @Param("goalId", ParseUUIDPipe) goalId: string,
+    @GetUser("id") currentUserId: string,
+  ) {
+    await this.organizationService.removeGoalFromOrganization(
+      organizationId,
+      goalId,
       currentUserId,
     );
   }
